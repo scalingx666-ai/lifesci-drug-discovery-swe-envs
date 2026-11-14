@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/GrossfieldLab__loos-131"
+description = "index and id were swapped in translation from GEMMI API."
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "loos",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "GrossfieldLab/loos"
+ref = "6266f705d052665c1e5118afae27273f0b5f4d5f"
+reference = "https://github.com/GrossfieldLab/loos/pull/131"
+source_access = "auto"
+built_at = "2026-11-14T05:59:05.372291+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:64282ed25f4008d91b4d1934d83019862bdab5aecdf99e526ddf023b64d3c768"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-05-14T11:36:18Z"
+diff_format = "unified"
+context_files = [
+    "src/mmcif.cpp",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 4
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/glotzerlab__freud-1516"
+description = "Speed up exponentials of complex numbers."
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "freud",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "glotzerlab/freud"
+ref = "be563f126675adc6d27050ec30d05c9098f15eff"
+reference = "https://github.com/glotzerlab/freud/pull/1516"
+source_access = "auto"
+built_at = "2026-11-14T05:55:24.430335+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:73f93ecbee9a3af1bb5155fb7082b01e97be33b625630c17a92b10152da4e376"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-10T13:20:55Z"
+diff_format = "unified"
+context_files = [
+    "ChangeLog.md",
+    "doc/source/reference/credits.rst",
+    "freud/diffraction/StaticStructureFactorDirect.cc",
+    "freud/order/HexaticTranslational.cc",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 8
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,12 @@
+diff --git a/env.yml b/env.yml
+index deab58a..cd27bfb 100644
+--- a/env.yml
++++ b/env.yml
+@@ -31,4 +31,5 @@ dependencies:
+     - chembl_webresource_client
+     - dpu_utils
+     - more_itertools
+-    - git+https://github.com/ml-jku/mhn-react.git#egg=mhnreact
+\ No newline at end of file
++    - git+https://github.com/ml-jku/mhn-react.git#egg=mhnreact
++    - git+https://github.com/openai/CLIP.git#egg=clip

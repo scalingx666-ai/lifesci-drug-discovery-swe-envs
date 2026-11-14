@@ -1,0 +1,384 @@
+diff --git a/README.md b/README.md
+index 56f49a8..4500825 100644
+--- a/README.md
++++ b/README.md
+@@ -4,7 +4,7 @@
+ [![GitHub Created At](https://img.shields.io/github/created-at/jinzhezenggroup/computational-chemistry-agent-skills?style=for-the-badge&logo=github)](https://github.com/jinzhezenggroup/computational-chemistry-agent-skills/commit/138d93e41935fb954857c29eafad4999144d6e26)
+ [![GitHub contributors](https://img.shields.io/github/contributors/jinzhezenggroup/computational-chemistry-agent-skills?style=for-the-badge&logo=github)](https://github.com/jinzhezenggroup/computational-chemistry-agent-skills/graphs/contributors)
+ <!-- SKILLS_BADGE_START -->
+-[![Skills](https://img.shields.io/badge/skills-34-blue?style=for-the-badge)](#skills-summary)
++[![Skills](https://img.shields.io/badge/skills-35-blue?style=for-the-badge)](#skills-summary)
+ <!-- SKILLS_BADGE_END -->
+ 
+ This repository hosts [Agent Skills](https://agentskills.io/home) to run computational-chemistry tasks.
+@@ -86,6 +86,7 @@ openclaw skills list --eligible
+ | [xtb](quantum-chemistry/xtb/SKILL.md) | Prepare and explain xTB semiempirical quantum-chemistry workflows for single-point energy, forces, charges, dipole, geometry optimization, and molecular dynamics. Use when the user asks for xTB calculations directly, or wants to use xTB through Python/ASE/dpdata bridges while keeping xTB as the primary method rather than as an ASE-only backend. | 1.0 | Requires a runnable xTB environment. Python-based workflows can use the `xtb` package; for reproducible ad hoc runs with uv, prefer `uv run --no-project --with ase --with xtb --with typing_extensions python ...` when using the ASE bridge. |
+ | [xtbloom-integrate-ase-dpdata](quantum-chemistry/xtbloom-integrate-ase-dpdata/SKILL.md) | Integrate xTBloom with ASE or dpdata for molecular energy, force, charge, labeling, relaxation, optimizer, or dynamics workflows. Use when an AI coding agent needs to attach the xTBloom ASE calculator, configure dpdata's xtbloom driver or batch minimizer, preserve the adapters' eV/angstrom conventions, choose reproducible versus warm-started execution, or diagnose unsupported periodic inputs. | - | - |
+ | [xtbloom-run-python-inference](quantum-chemistry/xtbloom-run-python-inference/SKILL.md) | Write, review, and run high-level xTBloom Python GFN2-xTB inference with `Calculator`, `Structure`, and `BatchCalculator`, including single systems, repeated geometry updates, heterogeneous ragged batches, backend selection, units, finite-temperature meaning, and peer-local failure handling. Use for ordinary NumPy-based energy, force, and charge workflows; use a dedicated integration skill instead for Array API/DLPack/PyTorch zero-copy, ASE/dpdata, the native C API, or QM/MM coupling. | - | - |
++| [dpdata-cli](tools/dpdata-cli/SKILL.md) | Convert and manipulate atomic simulation data formats using dpdata CLI. Use when converting between DFT/MD output formats or preparing DeePMD-kit training data. Supports 50+ formats including deepmd, xyz or extxyz, ABACUS, VASP, LAMMPS, CP2K, etc. | 1.0 | Requires uvx (uv) for running dpdata |
+ | [dpdata-driver](tools/dpdata-driver/SKILL.md) | Use dpdata Python Driver plugins to label systems (energies/forces/virials) via System.predict(), list available drivers, and build Driver objects (ase/deepmd/gaussian/sqm/hybrid). Use when working with dpdata Python API (not CLI) and you need driver-based energy/force prediction, plugin registration keys, or examples of using dpdata with ASE calculators or DeePMD models. | 1.0 | Requires dpdata or uv for running dpdata |
+ | [dpdata-minimizer](tools/dpdata-minimizer/SKILL.md) | Minimize geometries with dpdata minimizer plugins via System.minimize(), including how minimizers relate to drivers (ASEMinimizer needs a dpdata Driver) and how to list supported minimizers (ase/sqm). Use when doing geometry optimization/minimization through dpdata Python API. | - | - |
+ | [dpdisp-submit](tools/dpdisp-submit/SKILL.md) | Run Shell commands as computational jobs, on local machines or HPC clusters, through Shell, Slurm, PBS, LSF, Bohrium, etc. USE WHEN the user needs to submit batch jobs to a cluster, run commands on a remote server, execute tasks via job schedulers (Slurm, PBS, LSF), or safely run long-term/background shell commands that require state tracking and auto-recovery. | 1.0 | Requires uv and access to the internet. |
+diff --git a/quantum-chemistry/xtbloom-run-python-inference/references/python-inference.md b/quantum-chemistry/xtbloom-run-python-inference/references/python-inference.md
+index 85d33e5..7e83059 100644
+--- a/quantum-chemistry/xtbloom-run-python-inference/references/python-inference.md
++++ b/quantum-chemistry/xtbloom-run-python-inference/references/python-inference.md
+@@ -137,18 +137,21 @@ Do not combine `auto_batch_size` with `warm_start=True`: one native context reta
+ 
+ `Structure(..., charge=<value>)` sets molecular charge. Use either `multiplicity` or `uhf = multiplicity - 1`; inconsistent values are errors. Open-shell systems default to two unrestricted spin channels. Set `spin_channels=1` only when the restricted open-shell formulation is intended.
+ 
+-Restricted and unrestricted GFN1-xTB are implemented on CPU. Restricted and
+-unrestricted GFN2-xTB are implemented on CPU and CUDA.
++Restricted and unrestricted GFN1-xTB and GFN2-xTB are implemented on CPU and
++CUDA.
+ 
+ ## Scope Boundaries
+ 
+ This workflow does not cover direct device arrays, DLPack result ownership, PyTorch autograd, ASE/dpdata unit conversion, the native C API, or QM/MM force responsibilities. Use their dedicated integration guidance.
+ 
+-Do not generate examples that claim GFN1-xTB on CUDA or through the
+-GFN2-only Array API/DLPack and PyTorch surfaces. ROCm, lattice/PBC inputs,
+-solvation, native geometry optimization, molecular dynamics, Hessians, and
+-higher-order autograd remain unsupported. Adapter-level minimizers are
+-repeated single-point workflows, not native optimization support.
++Array API/DLPack supports both GFN1-xTB and GFN2-xTB on CPU and CUDA through
++its dedicated zero-copy workflow. PyTorch autograd also supports both models
++through `method=`, with the narrower positions-only `dE/dR = -F` derivative
++contract; use the zero-copy ML guidance for that interface. ROCm, lattice/PBC
++inputs, solvation, native geometry optimization, molecular dynamics,
++native/analytic Hessians, and higher-order autograd remain unsupported.
++Adapter-level minimizers are repeated single-point workflows, not native
++optimization support.
+ 
+ Authoritative online sources:
+ 
+diff --git a/sync-state.toml b/sync-state.toml
+index 7b60738..7bea975 100644
+--- a/sync-state.toml
++++ b/sync-state.toml
+@@ -22,9 +22,9 @@ last_upstream_ref = "master"
+ updated_at = "2026-06-19T07:35:00+00:00"
+ 
+ [jobs."dpdata-cli"]
+-last_upstream_commit = "32febda08e269a512db61ff1f4dcf193be29bef8"
++last_upstream_commit = "85ae95d3396eb01bcdb25eb399928bf48872900f"
+ last_upstream_ref = "master"
+-updated_at = "2026-03-25T11:34:51.041687+00:00"
++updated_at = "2026-08-20T18:28:42.800647+00:00"
+ 
+ [jobs."dpdata-driver"]
+ last_upstream_commit = "32febda08e269a512db61ff1f4dcf193be29bef8"
+@@ -62,6 +62,6 @@ last_upstream_ref = "main"
+ updated_at = "2026-08-14T00:40:17.434047+00:00"
+ 
+ [jobs."xtbloom-run-python-inference"]
+-last_upstream_commit = "32b1c76ca225ae151f6650723a892056b7a6cf6d"
++last_upstream_commit = "45af658f666af287a5f81f9122502be20d0062c2"
+ last_upstream_ref = "main"
+-updated_at = "2026-08-14T00:40:26.600462+00:00"
++updated_at = "2026-08-20T18:29:30.199287+00:00"
+diff --git a/tools/dpdata-cli/README.md b/tools/dpdata-cli/README.md
+new file mode 100644
+index 0000000..3c28e02
+--- /dev/null
++++ b/tools/dpdata-cli/README.md
+@@ -0,0 +1,71 @@
++# dpdata CLI Agent Skill
++
++An Agent Skill for using [dpdata](https://github.com/deepmodeling/dpdata) CLI to convert and manipulate atomic simulation data formats.
++
++## Installation
++
++To install this skill, provide the skill's GitHub URL to your agent (e.g., OpenClaw):
++
++```text
++Install the dpdata-cli skill from https://github.com/deepmodeling/dpdata/tree/devel/skills/dpdata-cli
++```
++
++Or manually copy to your agent's skills directory:
++
++```bash
++cp -r skills/dpdata-cli /path/to/your/agent/skills/
++```
++
++## Usage
++
++Once installed, ask your AI agent to work with dpdata:
++
++```text
++Convert my VASP OUTCAR to DeePMD-kit format
++```
++
++```text
++Convert LAMMPS dump file to VASP POSCAR
++```
++
++## Features
++
++- **Format Conversion**: Convert between 50+ DFT/MD formats
++- **DeePMD-kit Support**: Prepare training data for machine learning potentials
++- **Auto-detection**: Automatic format detection for common file types
++- **Multi-system Support**: Handle directories with multiple systems
++
++## Supported Formats
++
++Formats may be updated. See [Formats Reference (stable)](https://docs.deepmodeling.com/projects/dpdata/en/stable/formats.html) for the latest list.
++
++### DeePMD-kit
++
++`deepmd/raw`, `deepmd/comp`, `deepmd/npy`, `deepmd/npy/mixed`, `deepmd/hdf5`
++
++### VASP
++
++`vasp/poscar`, `vasp/contcar`, `vasp/outcar`, `vasp/xml`
++
++### LAMMPS
++
++`lammps/lmp`, `lammps/dump`
++
++### ABACUS
++
++`stru`, `abacus/scf`, `abacus/md`, `abacus/relax`
++
++### And many more...
++
++QE, CP2K, Gaussian, ORCA, PSI4, FHI-aims, SIESTA, PWmat, AMBER, GROMACS, ASE, pymatgen, XYZ, etc.
++
++## Requirements
++
++- [uv](https://docs.astral.sh/uv/) for running dpdata via `uvx`
++
++## References
++
++- [dpdata Documentation](https://docs.deepmodeling.com/projects/dpdata/)
++- [CLI Reference](https://docs.deepmodeling.com/projects/dpdata/en/stable/cli.html)
++- [Formats Reference](https://docs.deepmodeling.com/projects/dpdata/en/stable/formats.html)
++- [GitHub Repository](https://github.com/deepmodeling/dpdata)
+diff --git a/tools/dpdata-cli/SKILL.md b/tools/dpdata-cli/SKILL.md
+new file mode 100644
+index 0000000..ac2a518
+--- /dev/null
++++ b/tools/dpdata-cli/SKILL.md
+@@ -0,0 +1,222 @@
++---
++name: dpdata-cli
++description: Convert and manipulate atomic simulation data formats using dpdata CLI. Use when converting between DFT/MD output formats or preparing DeePMD-kit training data. Supports 50+ formats including deepmd, xyz or extxyz, ABACUS, VASP, LAMMPS, CP2K, etc.
++compatibility: Requires uvx (uv) for running dpdata
++metadata:
++  author: njzjz-bot
++  version: '1.0'
++  repository: https://github.com/deepmodeling/dpdata
++---
++
++# dpdata CLI
++
++dpdata is a tool for manipulating multiple atomic simulation data formats. This skill enables format conversion between various DFT/MD software outputs via command line.
++
++## Quick Start
++
++Run dpdata via uvx:
++
++```bash
++uvx dpdata <from_file> [options]
++```
++
++## Command Line Usage
++
++```text
++dpdata: Manipulating multiple atomic simulation data formats
++usage: dpdata [-h] [--to_file TO_FILE] [--from_format FROM_FORMAT]
++              [--to_format TO_FORMAT] [--no-labeled] [--multi]
++              [--type-map TYPE_MAP [TYPE_MAP ...]] [--version]
++              from_file
++```
++
++### Arguments
++
++| Argument              | Description                                           |
++| --------------------- | ----------------------------------------------------- |
++| `from_file`           | Read data from a file (positional)                    |
++| `--to_file`, `-O`     | Dump data to a file                                   |
++| `--from_format`, `-i` | Format of from_file (default: "auto")                 |
++| `--to_format`, `-o`   | Format of to_file                                     |
++| `--no-labeled`, `-n`  | Labels aren't provided (default: False)               |
++| `--multi`, `-m`       | System contains multiple directories (default: False) |
++| `--type-map`, `-t`    | Type map for atom types                               |
++| `--version`           | Show dpdata version and exit                          |
++
++## Common Examples
++
++### Convert VASP OUTCAR to deepmd format
++
++```bash
++uvx dpdata OUTCAR -i vasp/outcar -O deepmd_data -o deepmd/raw
++```
++
++### Convert LAMMPS dump to VASP POSCAR
++
++```bash
++uvx dpdata dump.lammps -i lammps/dump -O POSCAR -o vasp/poscar
++```
++
++### Convert with type map
++
++```bash
++uvx dpdata OUTCAR -i vasp/outcar -O deepmd_data -o deepmd/raw -t C H O N
++```
++
++### Convert multiple systems
++
++```bash
++uvx dpdata data_dir -i vasp/outcar -O output_dir -o deepmd/comp --multi
++```
++
++### Convert to deepmd/npy (compressed format)
++
++```bash
++uvx dpdata OUTCAR -i vasp/outcar -O deepmd_npy -o deepmd/npy
++```
++
++### Convert to deepmd/hdf5
++
++```bash
++uvx dpdata OUTCAR -i vasp/outcar -O data.h5 -o deepmd/hdf5
++```
++
++## Supported Formats
++
++Formats may be updated. For the complete and latest list, see:
++
++- [Formats Reference (stable)](https://docs.deepmodeling.com/projects/dpdata/en/stable/formats.html)
++
++### DeePMD-kit Formats
++
++| Format Name                  | Description                        |
++| ---------------------------- | ---------------------------------- |
++| `deepmd/raw`                 | DeePMD-kit raw text format         |
++| `deepmd/comp` / `deepmd/npy` | DeePMD-kit compressed numpy format |
++| `deepmd/npy/mixed`           | DeePMD-kit mixed type format       |
++| `deepmd/hdf5`                | DeePMD-kit HDF5 format             |
++
++### VASP Formats
++
++| Format Name                                           | Description          |
++| ----------------------------------------------------- | -------------------- |
++| `vasp/poscar` / `vasp/contcar` / `poscar` / `contcar` | VASP structure files |
++| `vasp/outcar` / `outcar`                              | VASP OUTCAR output   |
++| `vasp/xml` / `xml`                                    | VASP XML output      |
++| `vasp/string`                                         | VASP string format   |
++
++### LAMMPS Formats
++
++| Format Name            | Description      |
++| ---------------------- | ---------------- |
++| `lammps/lmp` / `lmp`   | LAMMPS data file |
++| `lammps/dump` / `dump` | LAMMPS dump file |
++
++### ABACUS Formats
++
++| Format Name                                              | Description           |
++| -------------------------------------------------------- | --------------------- |
++| `stru` / `abacus/stru`                                   | ABACUS structure file |
++| `abacus/lcao/scf` / `abacus/pw/scf` / `abacus/scf`       | ABACUS SCF output     |
++| `abacus/lcao/md` / `abacus/pw/md` / `abacus/md`          | ABACUS MD output      |
++| `abacus/lcao/relax` / `abacus/pw/relax` / `abacus/relax` | ABACUS relax output   |
++
++### Quantum ESPRESSO Formats
++
++| Format Name  | Description      |
++| ------------ | ---------------- |
++| `qe/cp/traj` | QE CP trajectory |
++| `qe/pw/scf`  | QE PWscf output  |
++
++### CP2K Formats
++
++| Format Name        | Description      |
++| ------------------ | ---------------- |
++| `cp2k/output`      | CP2K output      |
++| `cp2k/aimd_output` | CP2K AIMD output |
++
++### Gaussian Formats
++
++| Format Name     | Description                   |
++| --------------- | ----------------------------- |
++| `gaussian/log`  | Gaussian log file             |
++| `gaussian/fchk` | Gaussian formatted checkpoint |
++| `gaussian/md`   | Gaussian MD output            |
++| `gaussian/gjf`  | Gaussian input file           |
++
++### Other Formats
++
++| Format Name                                                         | Description           |
++| ------------------------------------------------------------------- | --------------------- |
++| `xyz`                                                               | XYZ format            |
++| `mace/xyz` / `nequip/xyz` / `gpumd/xyz` / `extxyz` / `quip/gap/xyz` | Extended XYZ variants |
++| `ase/structure`                                                     | ASE structure format  |
++| `ase/traj`                                                          | ASE trajectory        |
++| `pymatgen/structure`                                                | pymatgen structure    |
++| `pymatgen/molecule`                                                 | pymatgen molecule     |
++| `gromacs/gro` / `gro`                                               | GROMACS gro file      |
++| `siesta/output`                                                     | SIESTA output         |
++| `siesta/aimd_output`                                                | SIESTA AIMD output    |
++| `pwmat/output` / `pwmat/mlmd` / `pwmat/movement`                    | PWmat output          |
++| `pwmat/final.config` / `pwmat/atom.config`                          | PWmat config          |
++| `orca/spout`                                                        | ORCA output           |
++| `psi4/out`                                                          | PSI4 output           |
++| `dftbplus`                                                          | DFTB+ output          |
++| `fhi_aims/output` / `fhi_aims/md`                                   | FHI-aims output       |
++| `amber/md`                                                          | AMBER MD              |
++| `n2p2`                                                              | n2p2 format           |
++| `mol_file` / `mol`                                                  | MOL file              |
++| `sdf_file` / `sdf`                                                  | SDF file              |
++| `openmx/md`                                                         | OpenMX MD             |
++| `sqm/out`                                                           | SQM output            |
++| `sqm/in`                                                            | SQM input             |
++| `list`                                                              | List format           |
++| `3dmol`                                                             | 3Dmol visualization   |
++
++### Extended XYZ (extxyz) Format Details
++
++The following format names are **all equivalent** and invoke the same reader/writer:
++
++- `extxyz` — general-purpose extended XYZ
++- `quip/gap/xyz` / `quip/gap/xyz_file` — QUIP/GAP framework datasets
++- `mace/xyz` — MACE model training data
++- `nequip/xyz` — NequIP model training data
++- `gpumd/xyz` — GPUMD simulation data
++
++> **Important:** Plain `xyz` is a **different**, simpler format that stores atom species and coordinates but does not provide per-frame properties such as energies, forces, cell information, or periodic boundary conditions. Do not confuse `xyz` with `extxyz`.
++
++#### CLI Examples for extxyz
++
++```bash
++# Multi-frame extxyz trajectory → deepmd/npy (--multi preserves all frames)
++uvx dpdata data.xyz -i extxyz -O deepmd_data -o deepmd/npy --multi
++
++# Heterogeneous extxyz (mixed compositions) → deepmd/npy/mixed
++uvx dpdata data.xyz -i extxyz -O deepmd_data -o deepmd/npy/mixed --multi
++
++# Convert extxyz to VASP POSCAR (single-frame input only)
++uvx dpdata data.xyz -i extxyz -O POSCAR -o vasp/poscar
++
++# Convert a single-frame extxyz with explicit type map
++uvx dpdata data.xyz -i extxyz -O deepmd_data -o deepmd/npy -t H C N O
++```
++
++#### Tips for extxyz
++
++1. **Use `-i extxyz` explicitly** when working with `.xyz` files that contain extended XYZ data. Using `-i xyz` retains only atom species and coordinates, omitting per-frame properties such as energies, forces, and cell information.
++1. **Use `--multi` for any multi-frame extxyz file.** Without `--multi`, the CLI constructs a `LabeledSystem` that keeps only the first frame. This applies to all multi-frame trajectories, not just heterogeneous (mixed-composition) files. dpdata groups frames by chemical formula internally.
++1. **All alias names behave identically** — `-i mace/xyz`, `-i nequip/xyz`, `-i gpumd/xyz`, `-i quip/gap/xyz`, `-i quip/gap/xyz_file`, and `-i extxyz` produce the same result.
++
++## Tips
++
++1. **Auto-detection**: Use `-i auto` (default) to let dpdata detect format automatically
++1. **Type mapping**: Use `-t` to specify atom type order for deepmd formats
++1. **Multi-system**: Use `--multi` for directories containing multiple systems
++1. **Compressed output**: Use `deepmd/npy` or `deepmd/hdf5` for smaller file sizes
++
++## References
++
++- [dpdata Documentation](https://docs.deepmodeling.com/projects/dpdata/)
++- [CLI Reference](https://docs.deepmodeling.com/projects/dpdata/en/stable/cli.html)
++- [Formats Reference](https://docs.deepmodeling.com/projects/dpdata/en/stable/formats.html)
++- [GitHub Repository](https://github.com/deepmodeling/dpdata)

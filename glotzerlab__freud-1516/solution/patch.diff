@@ -1,0 +1,52 @@
+diff --git a/ChangeLog.md b/ChangeLog.md
+index 2e545c331..454afb22f 100644
+--- a/ChangeLog.md
++++ b/ChangeLog.md
+@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog] and this project adheres to
+ ###  Added
+ 
+ ### Changed
++* `StaticStructureFactorDirect` and `Hexatic` compute complex exponentials with Euler's
++  formula instead of `std::exp` on complex numbers with real parts always zero (#1516).
+ 
+ ### Deprecated
+ 
+diff --git a/doc/source/reference/credits.rst b/doc/source/reference/credits.rst
+index 5144c3f0c..51222a293 100644
+--- a/doc/source/reference/credits.rst
++++ b/doc/source/reference/credits.rst
+@@ -22,6 +22,7 @@ The following people contributed to the development of freud:
+ * Carolyn Phillips, University of Michigan
+ * Charlotte Zhao, University of Michigan
+ * Chrisy Du, University of Michigan
++* Chris Jones, Heriot-Watt University
+ * Domagoj Fijan, University of Michigan
+ * Dylan Marx, University of Michigan
+ * Emily Siew, University of Michigan
+diff --git a/freud/diffraction/StaticStructureFactorDirect.cc b/freud/diffraction/StaticStructureFactorDirect.cc
+index 6d946df8d..83abf41f9 100644
+--- a/freud/diffraction/StaticStructureFactorDirect.cc
++++ b/freud/diffraction/StaticStructureFactorDirect.cc
+@@ -143,7 +143,7 @@ StaticStructureFactorDirect::compute_F_k(const vec3<float>* points, unsigned int
+                 const auto& k_vec(k_points[k_index]);
+                 const auto& r_vec(points[r_index]);
+                 const auto alpha(dot(k_vec, r_vec));
+-                F_ki += std::exp(std::complex<float>(0, alpha));
++                F_ki += std::complex<float>(std::cos(alpha), std::sin(alpha));
+             }
+             F_k[k_index] = F_ki * normalization;
+         }
+diff --git a/freud/order/HexaticTranslational.cc b/freud/order/HexaticTranslational.cc
+index 619d93c53..15020d63f 100644
+--- a/freud/order/HexaticTranslational.cc
++++ b/freud/order/HexaticTranslational.cc
+@@ -68,7 +68,8 @@ void Hexatic::compute(const std::shared_ptr<locality::NeighborList>& nlist,
+     computeGeneral(
+         [this](const vec3<float>& delta) {
+             const float theta_ij = std::atan2(delta.y, delta.x);
+-            return std::exp(std::complex<float>(0, static_cast<float>(m_k) * theta_ij));
++            return std::complex<float>(std::cos(static_cast<float>(m_k) * theta_ij),
++                                       std::sin(static_cast<float>(m_k) * theta_ij));
+         },
+         nlist, points, qargs, false);
+ }

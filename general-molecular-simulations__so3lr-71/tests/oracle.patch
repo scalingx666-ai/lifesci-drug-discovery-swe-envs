@@ -1,0 +1,1418 @@
+diff --git a/so3lr/flash/calculator.py b/so3lr/flash/calculator.py
+index aec0f3a6..d025672b 100644
+--- a/so3lr/flash/calculator.py
++++ b/so3lr/flash/calculator.py
+@@ -4,7 +4,8 @@
+     atoms.calc = FlashCalculator(model="so3lr-tauri-m", kspace_electrostatics="pme")
+     atoms.get_potential_energy(), atoms.get_forces()
+ 
+-For periodic orthorhombic cells at least twice the long-range cutoff across, or no cell
++For periodic orthorhombic cells (under twice a cutoff across, that range sums over the
++periodic images), or no cell
+ (``pbc=False``: free space, any long-range cutoff), on an NVIDIA GPU (``check.flash_problem``
+ with task "ase"); anything else raises, naming the reason (``so3lr.So3lrCalculator``, the
+ neighbour-list model, takes any structure). The engine is built at the first call and
+diff --git a/so3lr/flash/check.py b/so3lr/flash/check.py
+index 310318e6..958d4b4a 100644
+--- a/so3lr/flash/check.py
++++ b/so3lr/flash/check.py
+@@ -28,6 +28,10 @@
+ # 645 rc wide (2900 A at 4.5 A), the box free space lays out around atoms that span about
+ # 1500 A (1000 A long range) to 2300 A (12 A)
+ MAX_CELLS = 1 << 28
++# a periodic box narrower than twice a cutoff: that range sums over the periodic images it
++# reaches (``image_grid``), walking at most this many cells each way (a long-range cutoff far
++# beyond the box, such as 1000 A, is left to the neighbour-list engine)
++MAX_IMAGE_CELLS = 16
+ ENGINES = ("auto", "flash", "standard")
+ # the AMD GPUs (gfx targets) flash is tested on: the MI355X
+ ROCM_TARGETS = ("gfx950",)
+@@ -277,27 +281,62 @@ def cell_grid(L, rc, rc_lr):
+     return None
+ 
+ 
+-def grid_problem(L, rc, rc_lr):
+-    """Why the engine cannot lay out an orthorhombic box of sides L (None if it can):
+-    ``box_problem``, then its cell grid (``cell_grid``) must have fewer than MAX_CELLS cells.
+-    The engine raises it when it lays out a box (``_layout``)."""
+-    problem = box_problem(L, rc, rc_lr)
++def image_grid(L, rc, rc_lr):
++    """The cell grid of a box the minimum image cannot take (where ``cell_grid`` has
++    none), as (cells per side, kc, ks), or None: cells at least rc wide (one where the side
++    is narrower), the long range walking kc cells each way through every periodic image it
++    reaches, and the short range ks (0 where every side is at least 2 rc: the minimum
++    image with two cells a side); None where kc or ks would be more than MAX_IMAGE_CELLS."""
++    nc = [max(int(math.floor(v / rc)), 1) for v in L]
++    kc = max(int(math.ceil(rc_lr / (v / n))) for v, n in zip(L, nc))
++    ks = 0 if min(L) >= 2.0 * rc else max(int(math.ceil(rc / (v / n))) for v, n in zip(L, nc))
++    return (nc, kc, ks) if max(kc, ks) <= MAX_IMAGE_CELLS else None
++
++
++def layout(L, rc, rc_lr, images=True):
++    """(cells per side, kc, images, ks) for an orthorhombic box of sides L, or None: the
++    minimum image's grid (``cell_grid``, images False, ks 0) where it exists, else (images
++    allowed) the periodic images' (``image_grid``, images True)."""
++    grid = cell_grid(L, rc, rc_lr)
++    if grid is not None:
++        return (*grid, False, 0)
++    grid = image_grid(L, rc, rc_lr) if images else None
++    return None if grid is None else (*grid[:2], True, grid[2])
++
++
++def grid_problem(L, rc, rc_lr, images=True, n=0):
++    """Why the engine cannot lay out an orthorhombic box of sides L for n atoms (None if it
++    can): ``box_problem``, then its cell grid (``layout``) must have fewer than MAX_CELLS
++    cells, and with the short range over the periodic images each neighbour entry (an atom
++    and its image, n (2 ks + 1)^3 of them) must fit an int32. The engine raises it when it
++    lays out a box (``_layout``)."""
++    problem = box_problem(L, rc, rc_lr, images)
+     if problem:
+         return problem
+-    grid = cell_grid(L, rc, rc_lr)
++    grid = layout(L, rc, rc_lr, images)
+     if grid is not None and math.prod(grid[0]) >= MAX_CELLS:
+         return (f"box {[round(v) for v in L]} A too large for the cell grid "
+                 f"({' x '.join(map(str, grid[0]))} cells, 2^{MAX_CELLS.bit_length() - 1} or more)")
++    if grid is not None and n * (2 * grid[3] + 1) ** 3 >= 2 ** 31:
++        return (f"box {[round(v, 2) for v in L]} A: {n} atoms and their periodic images overflow the "
++                f"neighbour rows' int32 entries (a larger box)")
+     return None
+ 
+ 
+-def box_problem(L, rc, rc_lr):
+-    """Why the engine cannot take an orthorhombic box of sides L (None if it can): the
+-    minimum image needs 2 x the cutoffs, and the cell grid (``cell_grid``) must exist."""
+-    if min(L) < 2.0 * max(rc, rc_lr):
+-        return f"box {[round(v, 2) for v in L]} A narrower than twice the cutoff {max(rc, rc_lr)} A"
+-    if cell_grid(L, rc, rc_lr) is None:
+-        return f"box {[round(v, 2) for v in L]} A too small for the cell grid"
++def box_problem(L, rc, rc_lr, images=True):
++    """Why the engine cannot take an orthorhombic box of sides L (None if it can). Where
++    every side is at least 2 rc_lr and the cell grid (``cell_grid``) exists, both ranges
++    take the minimum image; otherwise (images) they sum over the periodic images
++    (``image_grid``). Free space's box (images False) is always the minimum image's."""
++    if not images:
++        if min(L) < 2.0 * max(rc, rc_lr):
++            return f"box {[round(v, 2) for v in L]} A narrower than twice the cutoff {max(rc, rc_lr)} A"
++        if cell_grid(L, rc, rc_lr) is None:
++            return f"box {[round(v, 2) for v in L]} A too small for the cell grid"
++        return None
++    if layout(L, rc, rc_lr) is None:
++        return (f"box {[round(v, 2) for v in L]} A too small for its cutoffs {rc}, {rc_lr} A (the "
++                f"periodic images' walk takes at most {MAX_IMAGE_CELLS} cells each way)")
+     return None
+ 
+ 
+@@ -323,7 +362,7 @@ def vacuum_box(size, rc, rc_lr):
+     pad = max(VACUUM_PAD, 0.25 * size)
+     reach = min(rc_lr, size + pad)
+     L = size + pad + max(rc, reach)
+-    while box_problem([L] * 3, rc, reach):
++    while box_problem([L] * 3, rc, reach, images=False):
+         L += 0.25 * rc
+     return L, reach
+ 
+@@ -385,7 +424,7 @@ def structure_problem(settings, atoms, rc):
+         if not math.isfinite(size):
+             return "its positions are not all finite"
+         L, reach = vacuum_box(size, rc, rc_lr)
+-        problem = grid_problem([L] * 3, rc, reach)
++        problem = grid_problem([L] * 3, rc, reach, images=False)
+         if problem:
+             return f"its atoms span {size:.0f} A (one far from the rest?), a free-space {problem}"
+         return None
+@@ -400,7 +439,7 @@ def structure_problem(settings, atoms, rc):
+         sides = np.diag(box) if box.ndim == 2 else np.broadcast_to(box.reshape(-1), (3,))
+     shrink = 1.0 - (NPT_BOX_MARGIN if settings.get("ensemble") == "npt" else 0.0)
+     L = [float(v) * shrink for v in sides]
+-    return grid_problem(L, rc, rc_lr)
++    return grid_problem(L, rc, rc_lr, n=len(atoms))
+ 
+ 
+ @functools.cache
+diff --git a/so3lr/flash/cuda/__init__.py b/so3lr/flash/cuda/__init__.py
+index 50ca0d73..cdf4f2be 100644
+--- a/so3lr/flash/cuda/__init__.py
++++ b/so3lr/flash/cuda/__init__.py
+@@ -329,7 +329,8 @@ def _sized(self, rows=None):
+         eng = self.eng
+         n, K = eng.n, eng.K
+         nl = eng.nl if rows is None else rows
+-        if (K, nl) not in self._calls:
++        KS = eng.ks                   # the rows' periodic images (engine._edge), set by the layout
++        if (K, nl, KS) not in self._calls:
+             F, NH, M = eng.F, eng.nh, eng.M
+             f32, i32, S = jnp.float32, jnp.int32, jax.ShapeDtypeStruct
+             # the per-slot and per-pair buffers hold this device's range of rows: its nl K
+@@ -350,25 +351,25 @@ def call(name, out, aliases=None, **attrs):
+             # in chunks the gather writes the projections' gradients of the chunk's rows only
+             # (local), into a carry of the dE/dev and force sums (aliased)
+             local = self.chunk is not None
+-            self._calls[K, nl] = dict(
++            self._calls[K, nl, KS] = dict(
+                 pmax=pmax, tiles16=-(-pmax // 16),
+                 # the pair records; PIDX from a zeroed input (a slot without a pair, while a row
+                 # overflows, reads pair 0 rather than anything)
+                 prep=call("prep", (S((pmax * 4,), i32), S((pmax * 8,), f32), S((slots,), i32)), {14: 2},
+-                          zmax=eng.zmax, P=pmax, NL=nl),
++                          zmax=eng.zmax, P=pmax, NL=nl, KS=KS),
+                 # the scores per slot, with the filters per pair for the backward (fwd) or not
+                 fwd=call("fwd", (scores, S((pmax * 2 * F,), f32)), P=pmax, keep_w=1),
+                 scores=call("fwd", (scores, S((1,), f32)), P=pmax, keep_w=0),
+-                msg=call("msg", (S((n, F), f32), S((n, M), f32)), al({8: 0, 9: 1}), NL=nl),
++                msg=call("msg", (S((n, F), f32), S((n, M), f32)), al({8: 0, 9: 1}), NL=nl, KS=KS),
+                 # the backward: slot scalars, and the forces and ev gradients per slot (a copy per
+                 # channel where each channel's CTA writes its own)
+                 bwd=call("bwd", (S((slots * 5 * NH,), f32), S((self.copies * slots * 8,), f32),   # 8 floats per slot (FVS)
+                                  S((self.copies * slots * M,), f32)), P=pmax),
+                 gather=call("gather", tuple(S((nl if local else n, F), f32) for _ in range(5))
+                             + (S((n, M), f32), S((6, n), f32)), {9: 5, 10: 6} if local else al({9: 5, 10: 6}),
+-                            NL=nl, local=int(local)),
++                            NL=nl, local=int(local), KS=KS),
+                 lr=call("lr", tuple(S((n,), f32) for _ in range(4)) + (S((6, n), f32),), al({18: 0, 19: 4})))
+-        return self._calls[K, nl]
++        return self._calls[K, nl, KS]
+ 
+     # ---- once per force call: sorted rows and the pair records ---------------------------
+     def build(self, pos3):
+@@ -389,13 +390,17 @@ def build(self, pos3):
+     def _records(self, pos3, ns, cnt, row0, nl):
+         """The pair records (PI, PG, PIDX, off) of the rows [r0, r0 + nl) (r0 = row0[0]), with
+         their per-row arrays: a row keeps its partners outside the range and the larger ones
+-        inside it (sorted: columns [0, lo) and [hi, cnt))."""
++        inside it (sorted: columns [0, lo) and [hi, cnt)). With the periodic images (KS) the
++        entries compare packed (engine._edge): a row's own atom unshifted is a C + C0, so
++        of an atom's pairs with its own images the shifts above C0 are kept."""
+         eng, c = self.eng, self._sized(nl)
++        C = (2 * eng.ks + 1) ** 3
+         r0 = row0[0]
+         rows = jax.lax.dynamic_slice_in_dim(ns, r0, nl)
+         cm = jnp.minimum(jax.lax.dynamic_slice_in_dim(cnt, r0, nl), ns.shape[1])
+-        lo = jnp.sum(rows < r0, axis=1).astype(jnp.int32)
+-        hi = jnp.sum(rows < (r0 + jnp.arange(nl, dtype=jnp.int32))[:, None], axis=1).astype(jnp.int32)
++        lo = jnp.sum(rows < r0 * C, axis=1).astype(jnp.int32)
++        hi = jnp.sum(rows < ((r0 + jnp.arange(nl, dtype=jnp.int32)) * C + (C - 1) // 2)[:, None],
++                     axis=1).astype(jnp.int32)
+         off = jnp.concatenate([jnp.zeros((1,), jnp.int32), jnp.cumsum(cm - (hi - lo)).astype(jnp.int32)])
+         tile_atom = jnp.clip(jnp.searchsorted(off, 16 * jnp.arange(c["tiles16"], dtype=jnp.int32), side="right") - 1,
+                              0, nl - 1).astype(jnp.int32)
+@@ -565,7 +570,8 @@ def _lr_flags(self):
+         eng = self.eng
+         return (int(eng.elec) | int(eng.disp) << 1 | int(eng.pme_disp is not None) << 2
+                 | int(eng.r_tab < eng.reach) << 3 | int(eng.reach > 0.45 * eng.rc_lr) << 4
+-                | int(eng.reach > eng.rc_lr - eng.statics["dispersion_energy_cutoff_lr_damping"]) << 5)
++                | int(eng.reach > eng.rc_lr - eng.statics["dispersion_energy_cutoff_lr_damping"]) << 5
++                | int(eng.images) << 6)
+ 
+     def long_range(self, pos3, grid, q, a0, c6, e_atom, f3):
+         eng, c = self.eng, self._sized()
+diff --git a/so3lr/flash/cuda/attn_bwd7.cu b/so3lr/flash/cuda/attn_bwd7.cu
+index 4fcc995c..c5c2269b 100644
+--- a/so3lr/flash/cuda/attn_bwd7.cu
++++ b/so3lr/flash/cuda/attn_bwd7.cu
+@@ -566,6 +566,7 @@ struct GatherParams {
+       *__restrict__ gev_out, *__restrict__ f_out;   // f: [6][n] (fx, fy, fz, wx, wy, wz)
+   int n, K, nl;
+   int local;                     // the projections' gradients for the range's rows only ([nl, F], from row0)
++  int KS;                        // the rows' periodic images (edge_atom), 0: the minimum image
+ };
+ 
+ constexpr int GW_ = 8;
+@@ -608,7 +609,7 @@ __global__ void __launch_bounds__(GW_ * 32) bwd_gather(GatherParams p) {
+ #pragma unroll 1
+   for (int c = part; c < n_a; c += GSPLIT) {
+     const size_t slot = srow + c;
+-    const int b = p.nbr[nrow + c], pq = p.PIDX[slot];
++    const int b = edge_atom(p.nbr[nrow + c], p.KS), pq = p.PIDX[slot];
+     const float* sc = p.SC + slot * NSC;
+     const float* w1 = p.Wst + (size_t)pq * 2 * F;
+     const float* w2 = w1 + F;
+@@ -701,7 +702,8 @@ static ffi::Error B7Impl(cudaStream_t stream, F32 q1, F32 k1, F32 v1, F32 q2, F3
+ // local: the projections' gradients are the range's rows only ([nl, F] outputs, row r0 first)
+ static ffi::Error GatherImpl(cudaStream_t stream, F32 q1, F32 k1, F32 q2, F32 k2, F32 gdx, F32 Wst, F32 SC, F32 FV,
+                              F32 GEV, F32 gev_in, F32 f_in, S32 nbr, S32 cnt, S32 PIDX, S32 row0, RF32 gq1, RF32 gk1,
+-                             RF32 gv1, RF32 gq2, RF32 gk2, RF32 gev_out, RF32 f_out, int64_t NL, int64_t local) {
++                             RF32 gv1, RF32 gq2, RF32 gk2, RF32 gev_out, RF32 f_out, int64_t NL, int64_t local,
++                             int64_t KS) {
+   GatherParams p;
+   p.q1 = q1.typed_data(); p.k1 = k1.typed_data(); p.q2 = q2.typed_data(); p.k2 = k2.typed_data();
+   p.gdx = gdx.typed_data(); p.Wst = Wst.typed_data(); p.SC = SC.typed_data(); p.FV = FV.typed_data();
+@@ -711,6 +713,7 @@ static ffi::Error GatherImpl(cudaStream_t stream, F32 q1, F32 k1, F32 q2, F32 k2
+   p.gk2 = gk2->typed_data(); p.gev_out = gev_out->typed_data(); p.f_out = f_out->typed_data();
+   auto d = nbr.dimensions();
+   p.n = (int)d[0]; p.K = (int)d[1]; p.nl = (int)NL; p.row0 = row0.typed_data(); p.local = (int)local;
++  p.KS = (int)KS;
+   bwd_gather<<<(p.nl * WPA + GW_ - 1) / GW_, GW_ * 32, 0, stream>>>(p);
+   return launch_status();
+ }
+@@ -732,4 +735,4 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(BwdGather, GatherImpl,
+         .Arg<F32>().Arg<F32>().Arg<F32>().Arg<F32>().Arg<F32>().Arg<F32>()  // Wst SC FV GEV gev_in f_in
+         .Arg<S32>().Arg<S32>().Arg<S32>().Arg<S32>()                         // nbr cnt PIDX row0
+         .Ret<F32>().Ret<F32>().Ret<F32>().Ret<F32>().Ret<F32>().Ret<F32>().Ret<F32>().Attr<int64_t>("NL")
+-        .Attr<int64_t>("local"));
++        .Attr<int64_t>("local").Attr<int64_t>("KS"));
+diff --git a/so3lr/flash/cuda/attn_common.cuh b/so3lr/flash/cuda/attn_common.cuh
+index 691f13e3..0fe91302 100644
+--- a/so3lr/flash/cuda/attn_common.cuh
++++ b/so3lr/flash/cuda/attn_common.cuh
+@@ -151,6 +151,31 @@ __device__ __forceinline__ void dylm(int m, float x, float y, float z, float& gx
+   }
+ }
+ 
++// a neighbour-row entry (engine._edge): the partner, and with KS > 0 (the short range over
++// the periodic images) its image's shift in boxes per axis, packed as b (2 KS + 1)^3 + code
++__device__ __forceinline__ int edge_atom(int v, int KS) {
++  const int W = 2 * KS + 1;
++  return KS ? v / (W * W * W) : v;
++}
++// v's displacement from atom a: the minimum image, or (KS) the shifted image of positions
++// wrapped into the box (engine._pos3)
++__device__ __forceinline__ void edge_disp(const double* px, const double* py, const double* pz, int a, int v,
++                                          int KS, double Lx, double Ly, double Lz, double& dx, double& dy,
++                                          double& dz) {
++  const int b = edge_atom(v, KS);
++  dx = px[b] - px[a]; dy = py[b] - py[a]; dz = pz[b] - pz[a];
++  if (KS) {
++    const int W = 2 * KS + 1, code = v - b * W * W * W;
++    dx += (code % W - KS) * Lx;
++    dy += ((code / W) % W - KS) * Ly;
++    dz += (code / (W * W) - KS) * Lz;
++  } else {
++    dx -= Lx * floor(dx * (1.0 / Lx) + 0.5);
++    dy -= Ly * floor(dy * (1.0 / Ly) + 0.5);
++    dz -= Lz * floor(dz * (1.0 / Lz) + 0.5);
++  }
++}
++
+ // the pipelines' named barriers (producer / consumer warps) and the persistent tile loop
+ __device__ __forceinline__ void bar_sync(int id, int n) { asm volatile("bar.sync %0, %1;" ::"r"(id), "r"(n) : "memory"); }
+ __device__ __forceinline__ void bar_arrive(int id, int n) { asm volatile("bar.arrive %0, %1;" ::"r"(id), "r"(n) : "memory"); }
+diff --git a/so3lr/flash/cuda/attn_pair7.cu b/so3lr/flash/cuda/attn_pair7.cu
+index 95eb26cd..749cc97e 100644
+--- a/so3lr/flash/cuda/attn_pair7.cu
++++ b/so3lr/flash/cuda/attn_pair7.cu
+@@ -24,6 +24,7 @@ struct PrepParams {
+   float4* PG;      // [2 per pair]: (ux, uy, uz, r), (ce, dce, drt, rt / spacing)
+   int* PIDX;       // directed slot -> pair
+   int n, K, zmax, nl, pmax;      // pmax: the records' room
++  int KS;                        // the rows' periodic images (edge_atom), 0: the minimum image
+ };
+ 
+ // The pairs of a range of rows (a device's, or a chunk of them): for each of its rows a
+@@ -32,6 +33,10 @@ struct PrepParams {
+ // (b < row0) and [hi, cnt) (b > a). The directed slots and the per-row arrays are the
+ // range's own: slot (a - row0) K + column, so a range's buffers hold its rows only. A
+ // partner outside the range gets no slot: its reverse score goes to the shadow slot nl K + q.
++// With images (KS) an entry is a partner and its image (edge_atom), compared as packed: an
++// atom's own entry would be a C + C0 (C = (2 KS + 1)^3, C0 = (C - 1) / 2: no shift), the
++// reverse of b's image s is a's image -s (code C - 1 - code), and a pair of an atom with its
++// own image once (code above C0).
+ __global__ void pair_prep(PrepParams p) {
+   const int P = min(p.off[p.nl], p.pmax);
+   const int q = blockIdx.x * blockDim.x + threadIdx.x;
+@@ -43,24 +48,24 @@ __global__ void pair_prep(PrepParams p) {
+   const int a = r0 + al;
+   const int j = q - p.off[al], la = p.lo[al], ha = p.hi[al];
+   const int c = j < la ? j : j + (ha - la);
+-  const int b = p.nbr[(size_t)a * p.K + c];
++  const int v = p.nbr[(size_t)a * p.K + c];
++  const int b = edge_atom(v, p.KS);
++  const int W = 2 * p.KS + 1, C = W * W * W;
++  const int back = a * C + (C - 1 - (v - b * C));       // b's entry of a (KS 0: C 1, back a)
+   const bool b_local = b >= r0 && b < r0 + p.nl;
+   const int cm = b_local ? min(p.cnt[b], p.K) : 0;
+   int lo = 0, hi = cm;
+   const int* row = p.nbr + (size_t)b * p.K;
+   while (lo < hi) {
+     int mid = (lo + hi) >> 1;
+-    if (row[mid] < a) lo = mid + 1; else hi = mid;
++    if (row[mid] < back) lo = mid + 1; else hi = mid;
+   }
+   // b's slot of a: none when b is outside the range, or (a row overflowed; the engine widens
+   // the rows and calls again) when b's truncated row lacks a: the reverse score goes to the shadow
+-  const bool found = lo < cm && row[lo] == a;
++  const bool found = lo < cm && row[lo] == back;
+   const int sba = found ? (b - r0) * p.K + lo : p.nl * p.K + q;
+-  const double Lx = p.box[0], Ly = p.box[1], Lz = p.box[2];
+-  double dxd = p.px[b] - p.px[a], dyd = p.py[b] - p.py[a], dzd = p.pz[b] - p.pz[a];
+-  dxd -= Lx * floor(dxd * (1.0 / Lx) + 0.5);
+-  dyd -= Ly * floor(dyd * (1.0 / Ly) + 0.5);
+-  dzd -= Lz * floor(dzd * (1.0 / Lz) + 0.5);
++  double dxd, dyd, dzd;
++  edge_disp(p.px, p.py, p.pz, a, v, p.KS, p.box[0], p.box[1], p.box[2], dxd, dyd, dzd);
+   float dx = (float)dxd, dy = (float)dyd, dz = (float)dzd;
+   float r2 = dx * dx + dy * dy + dz * dz;
+   bool ok = r2 > 0.f;
+@@ -374,7 +379,7 @@ struct MsgParams {
+   const float *x_in, *ev_in, *scal;
+   const int* row0;
+   float *x_out, *ev_out;
+-  int n, K, nl;
++  int n, K, nl, KS;
+ };
+ 
+ // each equivariant component of a half (0: components 0 .. M/2, 1: the rest): its degree
+@@ -419,7 +424,7 @@ __global__ void __launch_bounds__(MW * 32) att_msg(MsgParams p) {
+     const int cn = min(32, n_a - c0);
+ #pragma unroll 4
+     for (int j = 0; j < cn; ++j) {
+-      const int b = __shfl_sync(0xffffffff, nbc, j);
++      const int b = edge_atom(__shfl_sync(0xffffffff, nbc, j), p.KS);
+       const float* vr = p.v1 + (size_t)b * F + lane;
+ #pragma unroll
+       for (int h = 0; h < NH; ++h) acc[h] += __shfl_sync(0xffffffff, scc[h], j) * vr[h * 32];
+@@ -428,11 +433,18 @@ __global__ void __launch_bounds__(MW * 32) att_msg(MsgParams p) {
+   for (int t0 = 0; t0 < n_a; t0 += 16) {
+     int c = t0 + e;
+     bool valid = c < n_a;
+-    int b = valid ? row[c] : a;
+-    double dxd = p.px[b] - ax, dyd = p.py[b] - ay, dzd = p.pz[b] - az;
+-    dxd -= Lx * floor(dxd * iLx + 0.5);
+-    dyd -= Ly * floor(dyd * iLy + 0.5);
+-    dzd -= Lz * floor(dzd * iLz + 0.5);
++    double dxd, dyd, dzd;
++    // the minimum image inline (not edge_disp): this loop keeps a's position and 1 / L in registers
++    if (p.KS) {
++      edge_disp(p.px, p.py, p.pz, a, valid ? row[c] : a * (2 * p.KS + 1) * (2 * p.KS + 1) * (2 * p.KS + 1),
++                p.KS, Lx, Ly, Lz, dxd, dyd, dzd);
++    } else {
++      int b = valid ? row[c] : a;
++      dxd = p.px[b] - ax; dyd = p.py[b] - ay; dzd = p.pz[b] - az;
++      dxd -= Lx * floor(dxd * iLx + 0.5);
++      dyd -= Ly * floor(dyd * iLy + 0.5);
++      dzd -= Lz * floor(dzd * iLz + 0.5);
++    }
+     float dx = (float)dxd, dy = (float)dyd, dz = (float)dzd;
+     float r2 = dx * dx + dy * dy + dz * dz;
+     bool ok = valid && r2 > 0.f;
+@@ -468,7 +480,7 @@ __global__ void __launch_bounds__(MW * 32) att_msg(MsgParams p) {
+ static ffi::Error PrepImpl(cudaStream_t stream, F64 px, F64 py, F64 pz, F64 box, S32 nbr, S32 cnt, S32 z, S32 off,
+                            S32 lo, S32 hi, S32 tile_atom, S32 row0, F32 rmin, F32 scal, S32 pidx0, RS32 PI,
+                            RF32 PG, RS32 PIDX, int64_t zmax, int64_t P,
+-                           int64_t NL) {
++                           int64_t NL, int64_t KS) {
+   PrepParams p;
+   p.px = px.typed_data(); p.py = py.typed_data(); p.pz = pz.typed_data(); p.box = box.typed_data();
+   p.nbr = nbr.typed_data(); p.cnt = cnt.typed_data(); p.z = z.typed_data(); p.off = off.typed_data();
+@@ -477,7 +489,7 @@ static ffi::Error PrepImpl(cudaStream_t stream, F64 px, F64 py, F64 pz, F64 box,
+   p.PI = reinterpret_cast<int4*>(PI->typed_data()); p.PG = reinterpret_cast<float4*>(PG->typed_data());
+   p.PIDX = PIDX->typed_data();
+   auto d = nbr.dimensions();
+-  p.n = (int)d[0]; p.K = (int)d[1]; p.zmax = (int)zmax; p.nl = (int)NL; p.pmax = (int)P;
++  p.n = (int)d[0]; p.K = (int)d[1]; p.zmax = (int)zmax; p.nl = (int)NL; p.pmax = (int)P; p.KS = (int)KS;
+   p.lo = lo.typed_data(); p.hi = hi.typed_data(); p.row0 = row0.typed_data();
+   pair_prep<<<((int)P + 255) / 256, 256, 0, stream>>>(p);
+   return launch_status();
+@@ -515,14 +527,14 @@ static ffi::Error PairImpl(cudaStream_t stream, F32 q1, F32 k1, F32 q2, F32 k2,
+ 
+ static ffi::Error MsgImpl(cudaStream_t stream, F32 v1, F32 S, F64 px, F64 py, F64 pz, F64 box, S32 nbr, S32 cnt,
+                           F32 x_in, F32 ev_in, F32 scal, S32 row0, RF32 x_out,
+-                          RF32 ev_out, int64_t NL) {
++                          RF32 ev_out, int64_t NL, int64_t KS) {
+   MsgParams p;
+   p.v1 = v1.typed_data(); p.S = S.typed_data(); p.px = px.typed_data(); p.py = py.typed_data();
+   p.pz = pz.typed_data(); p.box = box.typed_data(); p.nbr = nbr.typed_data(); p.cnt = cnt.typed_data();
+   p.x_in = x_in.typed_data(); p.ev_in = ev_in.typed_data(); p.scal = scal.typed_data();
+   p.x_out = x_out->typed_data(); p.ev_out = ev_out->typed_data();
+   auto d = nbr.dimensions();
+-  p.n = (int)d[0]; p.K = (int)d[1]; p.nl = (int)NL; p.row0 = row0.typed_data();
++  p.n = (int)d[0]; p.K = (int)d[1]; p.nl = (int)NL; p.row0 = row0.typed_data(); p.KS = (int)KS;
+   att_msg<<<(p.nl + MW - 1) / MW, MW * 32, 0, stream>>>(p);
+   return launch_status();
+ }
+@@ -534,7 +546,8 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(PairPrep, PrepImpl,
+         .Arg<S32>().Arg<S32>().Arg<S32>().Arg<S32>().Arg<S32>().Arg<S32>()  // nbr cnt z off lo hi
+         .Arg<S32>().Arg<S32>()                                             // tile_atom row0
+         .Arg<F32>().Arg<F32>().Arg<S32>()                                  // rmin scal, PIDX zeroed (aliased)
+-        .Ret<S32>().Ret<F32>().Ret<S32>().Attr<int64_t>("zmax").Attr<int64_t>("P").Attr<int64_t>("NL"));
++        .Ret<S32>().Ret<F32>().Ret<S32>().Attr<int64_t>("zmax").Attr<int64_t>("P").Attr<int64_t>("NL")
++        .Attr<int64_t>("KS"));
+ 
+ XLA_FFI_DEFINE_HANDLER_SYMBOL(AttPair, PairImpl,
+     ffi::Ffi::Bind().Ctx<ffi::PlatformStream<cudaStream_t>>()
+@@ -550,4 +563,4 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(AttMsg, MsgImpl,
+     ffi::Ffi::Bind().Ctx<ffi::PlatformStream<cudaStream_t>>()
+         .Arg<F32>().Arg<F32>().Arg<F64>().Arg<F64>().Arg<F64>().Arg<F64>()   // v1 S px py pz box
+         .Arg<S32>().Arg<S32>().Arg<F32>().Arg<F32>().Arg<F32>().Arg<S32>()    // nbr cnt x_in ev_in scal row0
+-        .Ret<F32>().Ret<F32>().Attr<int64_t>("NL"));
++        .Ret<F32>().Ret<F32>().Attr<int64_t>("NL").Attr<int64_t>("KS"));
+diff --git a/so3lr/flash/cuda/lr.cu b/so3lr/flash/cuda/lr.cu
+index f0316625..fbb4b402 100644
+--- a/so3lr/flash/cuda/lr.cu
++++ b/so3lr/flash/cuda/lr.cu
+@@ -3,7 +3,9 @@
+ // damping, optional PME residual), per atom over all partners within the reach, both ends of
+ // every pair (gather only: deterministic). One warp per atom (atoms in cell order); the cell
+ // rows walked as flash walks them; hits compacted into a per-warp queue so all 32 lanes
+-// evaluate real pairs.
++// evaluate real pairs. IMG (a box under 2 x the reach across): the walk goes KC cells each
++// way without wrapping, through the periodic images, each partner an atom's image (the
++// displacement from the wrapped positions plus the shift), an atom's own images included.
+ #include <cstdint>
+ 
+ #include "ffi_common.cuh"
+@@ -18,7 +20,7 @@ struct LrParams {
+   const int* row0;                // this device's rows: row0 <= atom < row0 + nl
+   float *e_out, *gq, *ga0, *gc6, *f_out;
+   int nl;
+-  int n, NX, NY, NZ, KC, ELEC, DISP, DPME, FAR, EL_SWITCH, DISP_SWITCH;
++  int n, NX, NY, NZ, KC, ELEC, DISP, DPME, FAR, EL_SWITCH, DISP_SWITCH, IMG;
+ };
+ 
+ __device__ __forceinline__ void switching(float x, float on, float off, float& f, float& df) {
+@@ -160,6 +162,56 @@ __global__ void __launch_bounds__(LW * 32) lr_kernel(LrParams p) {
+   A.c6_a = c6_ta * p.c6r[wi];
+   Acc acc = {};
+   int qn = 0;
++  // the atoms of cells c0..c1 of a row into the queue; IMG: as their image shifted by
++  // (shx, shy, shz) boxes (the positions wrapped into the box: engine._pos3), else as the
++  // minimum image
++  auto scan = [&](int row, int c0, int c1, int shx, int shy, int shz) {
++    const bool itself = shx == 0 && shy == 0 && shz == 0;
++    const double tx = shx * Lx - ax, ty = shy * Ly - ay, tz = shz * Lz - az;
++    const int s = p.cell_start[row + c0], e = p.cell_start[row + c1 + 1];
++    for (int k0 = s; k0 < e; k0 += 32) {
++      const int kk = k0 + lane;
++      bool hit = false;
++      int j = 0;
++      float dx = 0.f, dy = 0.f, dz = 0.f;
++      if (kk < e) {
++        j = kk;                                   // cell order: contiguous loads
++        double dxd, dyd, dzd;
++        if (p.IMG) {
++          dxd = p.px[j] + tx; dyd = p.py[j] + ty; dzd = p.pz[j] + tz;
++        } else {
++          dxd = p.px[j] - ax; dyd = p.py[j] - ay; dzd = p.pz[j] - az;
++          dxd -= Lx * floor(dxd * iLx + 0.5);
++          dyd -= Ly * floor(dyd * iLy + 0.5);
++          dzd -= Lz * floor(dzd * iLz + 0.5);
++        }
++        dx = (float)dxd; dy = (float)dyd; dz = (float)dzd;
++        float r2 = dx * dx + dy * dy + dz * dz;
++        hit = r2 < reach2 && (j != wi || !itself) && r2 > 0.f;
++      }
++      const unsigned m = __ballot_sync(0xffffffff, hit);
++      if (hit) {
++        const int pos = qn + __popc(m & ((1u << lane) - 1));
++        qj[warp][pos] = j; qx[warp][pos] = dx; qy[warp][pos] = dy; qz[warp][pos] = dz;
++      }
++      qn += __popc(m);
++      __syncwarp();
++      if (qn >= 32) {
++#ifdef NOPAIR
++        acc.e += qx[warp][lane];
++#else
++        pair(p, A, qj[warp][lane], qx[warp][lane], qy[warp][lane], qz[warp][lane], acc);
++#endif
++        __syncwarp();
++        if (lane < qn - 32) {
++          qj[warp][lane] = qj[warp][lane + 32]; qx[warp][lane] = qx[warp][lane + 32];
++          qy[warp][lane] = qy[warp][lane + 32]; qz[warp][lane] = qz[warp][lane + 32];
++        }
++        qn -= 32;
++        __syncwarp();
++      }
++    }
++  };
+   const int W2 = 2 * KC + 1;
+   for (int k = 0; k < W2 * W2; ++k) {
+     const int dzc = k / W2 - KC, dyc = k % W2 - KC;
+@@ -170,6 +222,20 @@ __global__ void __launch_bounds__(LW * 32) lr_kernel(LrParams p) {
+     const float xr = sqrtf(fmaxf(reach2 - g2, 0.f));
+     const int lo = max(cx + (int)floorf((ox - xr) / sx), cx - KC);
+     const int hi = min(cx + (int)floorf((ox + xr) / sx), cx + KC);
++    if (p.IMG) {
++      // cells unwrapped: the cell and its image's shift (non-negative by whole periods first)
++      const int OZ = KC / NZ + 1, OY = KC / NY + 1, OX = KC / NX + 1;
++      const int zt = cz + dzc + OZ * NZ, yt = cy + dyc + OY * NY;
++      const int row = ((zt % NZ) * NY + yt % NY) * NX;
++      const int shz = zt / NZ - OZ, shy = yt / NY - OY;
++      // columns lo..hi, a period of NX at a time
++      for (int shx = (lo + OX * NX) / NX - OX; shx * NX <= hi; ++shx) {
++        const int base = shx * NX;
++        const int c0 = max(lo, base) - base, c1 = min(hi, base + NX - 1) - base;
++        if (c1 >= c0) scan(row, c0, c1, shx, shy, shz);
++      }
++      continue;
++    }
+     const int zc = (cz + dzc + NZ) % NZ, yc = (cy + dyc + NY) % NY;
+     const int row = (zc * NY + yc) * NX;
+     for (int part = 0; part < 2; ++part) {
+@@ -180,44 +246,7 @@ __global__ void __launch_bounds__(LW * 32) lr_kernel(LrParams p) {
+       else { c0 = 1; c1 = 0; }
+       if (hi < lo) c1 = c0 - 1;
+       if (c1 < c0) continue;
+-      const int s = p.cell_start[row + c0], e = p.cell_start[row + c1 + 1];
+-      for (int k0 = s; k0 < e; k0 += 32) {
+-        const int kk = k0 + lane;
+-        bool hit = false;
+-        int j = 0;
+-        float dx = 0.f, dy = 0.f, dz = 0.f;
+-        if (kk < e) {
+-          j = kk;                                   // cell order: contiguous loads
+-          double dxd = p.px[j] - ax, dyd = p.py[j] - ay, dzd = p.pz[j] - az;
+-          dxd -= Lx * floor(dxd * iLx + 0.5);
+-          dyd -= Ly * floor(dyd * iLy + 0.5);
+-          dzd -= Lz * floor(dzd * iLz + 0.5);
+-          dx = (float)dxd; dy = (float)dyd; dz = (float)dzd;
+-          float r2 = dx * dx + dy * dy + dz * dz;
+-          hit = r2 < reach2 && j != wi && r2 > 0.f;
+-        }
+-        const unsigned m = __ballot_sync(0xffffffff, hit);
+-        if (hit) {
+-          const int pos = qn + __popc(m & ((1u << lane) - 1));
+-          qj[warp][pos] = j; qx[warp][pos] = dx; qy[warp][pos] = dy; qz[warp][pos] = dz;
+-        }
+-        qn += __popc(m);
+-        __syncwarp();
+-        if (qn >= 32) {
+-#ifdef NOPAIR
+-          acc.e += qx[warp][lane];
+-#else
+-          pair(p, A, qj[warp][lane], qx[warp][lane], qy[warp][lane], qz[warp][lane], acc);
+-#endif
+-          __syncwarp();
+-          if (lane < qn - 32) {
+-            qj[warp][lane] = qj[warp][lane + 32]; qx[warp][lane] = qx[warp][lane + 32];
+-            qy[warp][lane] = qy[warp][lane + 32]; qz[warp][lane] = qz[warp][lane + 32];
+-          }
+-          qn -= 32;
+-          __syncwarp();
+-        }
+-      }
++      scan(row, c0, c1, 0, 0, 0);
+     }
+   }
+ #ifdef NOPAIR
+@@ -265,7 +294,7 @@ static ffi::Error LrImpl(cudaStream_t stream, F64 px, F64 py, F64 pz, F64 box, S
+   p.n = (int)px.dimensions()[0];
+   p.NX = (int)NX; p.NY = (int)NY; p.NZ = (int)NZ; p.KC = (int)KC; p.nl = (int)NL; p.row0 = row0.typed_data();
+   p.ELEC = flags & 1; p.DISP = (flags >> 1) & 1; p.DPME = (flags >> 2) & 1; p.FAR = (flags >> 3) & 1;
+-  p.EL_SWITCH = (flags >> 4) & 1; p.DISP_SWITCH = (flags >> 5) & 1;
++  p.EL_SWITCH = (flags >> 4) & 1; p.DISP_SWITCH = (flags >> 5) & 1; p.IMG = (flags >> 6) & 1;
+   lr_kernel<<<(p.n + LW - 1) / LW, LW * 32, 0, stream>>>(p);
+   return launch_status();
+ }
+diff --git a/so3lr/flash/domains.py b/so3lr/flash/domains.py
+index d997dcb1..94b860e5 100644
+--- a/so3lr/flash/domains.py
++++ b/so3lr/flash/domains.py
+@@ -402,7 +402,8 @@ def lr(R, q, a0, c6):
+             e, gq, ga0, gc6, f3, most = _staged(eng, "long_range", make)(pos, q, a0, c6)
+             if int(most) <= eng.maxh:
+                 return e, gq, ga0, gc6, jnp.stack(f3[:3], -1)
+-            eng.maxh = min(int(int(most) * 1.25), eng.n)
++            # over the periodic images an atom can have more partners than n - 1
++            eng.maxh = int(int(most) * 1.25) if eng.images else min(int(int(most) * 1.25), eng.n)
+             eng._build_jit()
+         raise RuntimeError(f"Flash domains: overflowed again after {MAX_REBUILDS} rebuilds")
+ 
+diff --git a/so3lr/flash/engine.py b/so3lr/flash/engine.py
+index 0d5cb945..acbde4ca 100644
+--- a/so3lr/flash/engine.py
++++ b/so3lr/flash/engine.py
+@@ -44,8 +44,10 @@
+   gradients in the backward, the charges and dispersion ratios. Each device spreads
+   every atom on the PME mesh; the forces are the same as on one.
+ 
+-Periodic orthorhombic boxes, at least 2 x the long-range cutoff across and wide enough
+-for the cell grid (``check.box_problem``), or free space (``box=None``: the gas phase, run
++Periodic orthorhombic boxes down to a few A (``check.box_problem``): where a side is under 2 x
++the long-range cutoff, the long range sums over every periodic image within it, and under
++2 x the short-range cutoff the short range too (an atom's own images included;
++``check.image_grid``), as the neighbour-list engine's explicit images do; or free space (``box=None``: the gas phase, run
+ in a periodic box with room for the atoms and the cutoffs, ``check.vacuum_box``); models
+ with one head per degree entry, degrees 1-4 (so3lr-tauri-s, -m, -l, and the legacy so3lr:
+ LayerNorm, ZBL repulsion, its Hirshfeld ratios for both dispersion ratios).
+@@ -56,7 +58,7 @@
+ 
+ import contextlib
+ import math
+-from functools import partial
++from functools import partial, reduce
+ 
+ import numpy as np
+ import jax
+@@ -68,7 +70,7 @@
+ import jaxpme
+ 
+ from so3lr.flash import blocks
+-from so3lr.flash.check import KERNELS, box_problem, cell_grid, grid_problem, is_rocm, vacuum_box, vacuum_fits, vacuum_size
++from so3lr.flash.check import KERNELS, box_problem, grid_problem, is_rocm, layout as grid_layout, vacuum_box, vacuum_fits, vacuum_size
+ from so3lr.mlff.nn.embed.embed_sparse import PAIR_FLOOR_WIDTH, nlh_reference_distance
+ from so3lr.mlff.nn.observable.observable_sparse import c6_raw_potential
+ from so3lr.mlff.utils.kspace_utils import kspace_grid_shape
+@@ -163,6 +165,41 @@ def _min_image(d, L):
+     return d - L * jnp.floor(d / L + 0.5)
+ 
+ 
++def _wrap(x, L):
++    """x in [0, L) (up to rounding): the coordinate the cell grid bins (build_grid)."""
++    return x - L * jnp.floor(x / L)
++
++
++def _pack(sh, K):
++    """A periodic image's shift (boxes per axis, each within [-K, K]) as one code in
++    [0, (2 K + 1)^3); no shift is ((2 K + 1)^3 - 1) / 2."""
++    W = 2 * K + 1
++    return (sh[0] + K) + W * ((sh[1] + K) + W * (sh[2] + K))
++
++
++def _unpack(code, K):
++    """The shift ``_pack`` packed."""
++    W = 2 * K + 1
++    return _rem(code, W) - K, _rem(_div(code, W), W) - K, _div(code, W * W) - K
++
++
++def _unwrap(c, n, K):
++    """Cell c of a side of n cells, c within K of [0, n): its cell in the box and its
++    image's shift in boxes (made non-negative by whole periods first, as _div and _rem take)."""
++    t = c + (K // n + 1) * n
++    return _rem(t, n), _div(t, n) - (K // n + 1)
++
++
++def _edge(v, KS):
++    """A neighbour-row entry: the partner, and (KS, the short range over the periodic
++    images) its image's shift, packed as partner * (2 KS + 1)^3 + ``_pack`` (``_ell_kernel``);
++    None where the row holds the minimum image's partners."""
++    if not KS:
++        return v, None
++    C = (2 * KS + 1) ** 3
++    return _div(v, C), _unpack(_rem(v, C), KS)
++
++
+ def _switch(x, on, off):
+     """switching_fn(x, on, off) and its derivative."""
+     c = (x - on) / (off - on)
+@@ -185,14 +222,18 @@ def _far_field(r, rc, switch=True):
+     return inv - 1.0 / rc - (1.0 - f) * fc * (r - rc), -inv * inv - (1.0 - f) * fc + df * fc * (r - rc)
+ 
+ 
+-def _geometry(px, py, pz, jj, emask, ax, ay, az, Lx, Ly, Lz, rc):
++def _geometry(px, py, pz, jj, emask, ax, ay, az, Lx, Ly, Lz, rc, sh=None):
+     """Unit vector, distance, cutoff and its derivative for edges a <- jj (masked lanes:
+-    r = 2 rc, cut = 0)."""
++    r = 2 rc, cut = 0): the minimum image, or (sh, ``_edge``) jj's image shifted by sh boxes
++    (the positions wrapped into the box: ``_pos3``)."""
+     # the displacement in the positions' precision (float64 positions, float32 model:
+     # no rounding from the size of the coordinates), the rest in the model's (rc's)
+-    dx = _min_image(plgpu.load(px.at[jj], mask=emask, other=0.0) - ax, Lx).astype(rc.dtype)
+-    dy = _min_image(plgpu.load(py.at[jj], mask=emask, other=0.0) - ay, Ly).astype(rc.dtype)
+-    dz = _min_image(plgpu.load(pz.at[jj], mask=emask, other=0.0) - az, Lz).astype(rc.dtype)
++    d = [plgpu.load(p.at[jj], mask=emask, other=0.0) - a for p, a in ((px, ax), (py, ay), (pz, az))]
++    if sh is None:
++        d = [_min_image(v, L) for v, L in zip(d, (Lx, Ly, Lz))]
++    else:
++        d = [v + s.astype(v.dtype) * L for v, s, L in zip(d, sh, (Lx, Ly, Lz))]
++    dx, dy, dz = (v.astype(rc.dtype) for v in d)
+     r2 = dx * dx + dy * dy + dz * dz
+     ok = emask & (r2 > 0.0)
+     r = jnp.where(ok, jnp.sqrt(jnp.where(ok, r2, 1.0)), 2.0 * rc)
+@@ -208,7 +249,7 @@ def _geometry(px, py, pz, jj, emask, ax, ay, az, Lx, Ly, Lz, rc):
+ 
+ 
+ def _floor(r, za, jj, emask, z, rmin, ZMAX):
+-    """The descriptor floor (so3lr_dev): the distance the radial filters see, and its
++    """The descriptor floor (as in so3lr): the distance the radial filters see, and its
+     derivative. Identity above rmin(Z_a, Z_b) + width."""
+     zb = plgpu.load(z.at[jj], mask=emask, other=1)
+     lo = jnp.minimum(za, zb) - 1
+@@ -391,7 +432,14 @@ def _each_atom(rows, N, APP, atom):
+         pl.when(a < rows[0] + N)(partial(atom, a))
+ 
+ 
+-def _ell_kernel(px, py, pz, order, cell_start, cell_of, geo, boxl, rows, nbr, count, *, NX, NY, NZ, K, BLE, N, APP):
++def _ell_kernel(px, py, pz, order, cell_start, cell_of, geo, boxl, rows, nbr, count, *, NX, NY, NZ, K, BLE, N, APP,
++                KS=0):
++    """Each atom's partners within rc, from the 27 cells around it (the minimum image); KS:
++    from the (2 KS + 1)^3 cells around it without wrapping, through the periodic images (a
++    box under 2 rc across; the positions wrapped into the box, ``_pos3``), each partner an
++    atom and its image packed in one entry (``_edge``), an atom's own images included."""
++    W = 2 * KS + 1 if KS else 3
++
+     def atom(a):
+         Lx, Ly, Lz, rc2 = boxl[0], boxl[1], boxl[2], geo[0]
+         ax, ay, az = px[a], py[a], pz[a]
+@@ -401,27 +449,47 @@ def atom(a):
+         cz = _div(c, NX * NY)
+ 
+         def cell(k, n):
+-            dz = _div(k, 9) - 1
+-            dy = _rem(_div(k, 3), 3) - 1
+-            dx = _rem(k, 3) - 1
+-            cc = (_rem(cz + dz + NZ, NZ) * NY + _rem(cy + dy + NY, NY)) * NX + _rem(cx + dx + NX, NX)
++            dz = _div(k, W * W) - W // 2
++            dy = _rem(_div(k, W), W) - W // 2
++            dx = _rem(k, W) - W // 2
++            if KS:
++                # the unwrapped cell: its cell in the box, and the image's shift, within
++                # [-KS, KS] boxes per axis (the cells are at least 1 a side)
++                (xc, shx), (yc, shy), (zc, shz) = (_unwrap(cv + dv, nc, KS)
++                                                   for cv, dv, nc in ((cx, dx, NX), (cy, dy, NY), (cz, dz, NZ)))
++                sh = (shx, shy, shz)
++                code = _pack(sh, KS)
++            else:
++                xc, yc, zc = (_rem(cv + dv + nc, nc) for cv, dv, nc in ((cx, dx, NX), (cy, dy, NY), (cz, dz, NZ)))
++            cc = (zc * NY + yc) * NX + xc
+             s = cell_start[cc]
+             e = cell_start[cc + 1]
++            # a side of two cells (a box under 3 cutoffs, check.image_grid): the cells one
++            # either way are the same cell, walked once
++            twice = [d == 1 for d, nc in ((dx, NX), (dy, NY), (dz, NZ)) if nc == 2]
++            if twice and not KS:
++                e = jnp.where(reduce(jnp.logical_or, twice), s, e)
+ 
+             def chunk(t, n):
+                 ks = s + t * BLE + jnp.arange(BLE)
+                 m = ks < e
+                 j = plgpu.load(order.at[ks], mask=m, other=0)
+-                ddx = _min_image(plgpu.load(px.at[j], mask=m, other=0.0) - ax, Lx)
+-                ddy = _min_image(plgpu.load(py.at[j], mask=m, other=0.0) - ay, Ly)
+-                ddz = _min_image(plgpu.load(pz.at[j], mask=m, other=0.0) - az, Lz)
+-                hit = m & (ddx * ddx + ddy * ddy + ddz * ddz < rc2) & (j != a)
++                d = [plgpu.load(p.at[j], mask=m, other=0.0) - av for p, av in ((px, ax), (py, ay), (pz, az))]
++                if KS:
++                    d = [v + sv.astype(v.dtype) * L for v, sv, L in zip(d, sh, (Lx, Ly, Lz))]
++                    itself = (j == a) & (code == (W ** 3 - 1) // 2)
++                    v = j * W ** 3 + code
++                else:
++                    d = [_min_image(v, L) for v, L in zip(d, (Lx, Ly, Lz))]
++                    itself = j == a
++                    v = j
++                hit = m & (d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < rc2) & ~itself
+                 slot = n + jnp.cumsum(hit.astype(jnp.int32)) - 1
+-                plgpu.store(nbr.at[a, slot], j, mask=hit & (slot < K))
++                plgpu.store(nbr.at[a, slot], v, mask=hit & (slot < K))
+                 return (n + jnp.sum(hit.astype(jnp.int32))).astype(jnp.int32)
+             return lax.fori_loop(0, _cdiv(e - s, BLE), chunk, n)
+ 
+-        count[a] = lax.fori_loop(0, 27, cell, jnp.int32(0))
++        count[a] = lax.fori_loop(0, W ** 3, cell, jnp.int32(0))
+ 
+     _each_atom(rows, N, APP, atom)
+ 
+@@ -432,7 +500,7 @@ def chunk(t, n):
+ def _att_fwd_kernel(q1, k1, v1, q2, k2, ev, px, py, pz, nbr, cnt, z, rmin,
+                     t1v, t1d, t2v, t2d, wa1, ba1, wb1, bb1, wa2, ba2, wb2, bb2, mdeg, cdeg, scal,
+                     x_in, ev_in, boxl, rows, x_out, ev_out, *, G, ND, MP, ZMAX, YS, CH=0, BE=BE, H0=0, NH=4, N,
+-                    APP):
++                    APP, KS=0):
+     # CH 0: both channels; 1: heads only (x_out); 2: degrees only (ev_out). The outputs
+     # alias the inputs, so a channel not run leaves its output as it was.
+     def atom(a):
+@@ -452,8 +520,8 @@ def chunk(c, carry):
+             acc, dev_a = carry
+             oe = c * BE + jnp.arange(BE)
+             emask = oe < n_a
+-            jj = plgpu.load(nbr.at[a, oe], mask=emask, other=0)
+-            ux, uy, uz, r, ce, _ = _geometry(px, py, pz, jj, emask, ax, ay, az, Lx, Ly, Lz, rc)
++            jj, sh = _edge(plgpu.load(nbr.at[a, oe], mask=emask, other=0), KS)
++            ux, uy, uz, r, ce, _ = _geometry(px, py, pz, jj, emask, ax, ay, az, Lx, Ly, Lz, rc, sh)
+             rt = _floor(r, za, jj, emask, z, rmin, ZMAX)[0]
+             nz = ce != 0.0
+             i0, u = _table_coords(rt, spacing, n_int)
+@@ -505,7 +573,7 @@ def degree(j, a_m):
+ # =========================================================================== #
+ def _att_bwd_heads_kernel(q1, k1, v1, ev, px, py, pz, nbr, cnt, z, rmin, tv, td, wa, ba, wb, bb,
+                           mdeg, cdeg, gdx, scal, a0, gev_in, fw_in, boxl, gq, gk, gv, gev, fw_o, *, G, ND, MP,
+-                          ZMAX, BE=BE, H0=0, NH=4):
++                          ZMAX, BE=BE, H0=0, NH=4, KS=0):
+     t = _i32(pl.program_id(0))
+     a = a0[0] + t
+ 
+@@ -526,8 +594,8 @@ def chunk(c, carry):
+             agq, agk, agv, gev_a, fw = carry
+             oe = c * BE + jnp.arange(BE)
+             emask = oe < n_a
+-            jj = plgpu.load(nbr.at[a, oe], mask=emask, other=0)
+-            ux, uy, uz, r, ce, dce = _geometry(px, py, pz, jj, emask, ax, ay, az, Lx, Ly, Lz, rc)
++            jj, sh = _edge(plgpu.load(nbr.at[a, oe], mask=emask, other=0), KS)
++            ux, uy, uz, r, ce, dce = _geometry(px, py, pz, jj, emask, ax, ay, az, Lx, Ly, Lz, rc, sh)
+             rt, drt = _floor(r, za, jj, emask, z, rmin, ZMAX)
+             nz = ce != 0.0
+             i0, u = _table_coords(rt, spacing, n_int)
+@@ -585,7 +653,7 @@ def head(j, c2):
+ 
+ def _att_bwd_degrees_kernel(q2, k2, ev, px, py, pz, nbr, cnt, z, rmin, tv, td, wa, ba, wb, bb,
+                             mdeg, cdeg, par, gdev, scal, a0, gev_in, fw_in, boxl, gq, gk, gev, fw_o, *, G, ND,
+-                            MP, ZMAX, YS, BE=BE, H0=0, NH=4):
++                            MP, ZMAX, YS, BE=BE, H0=0, NH=4, KS=0):
+     t = _i32(pl.program_id(0))
+     a = a0[0] + t
+ 
+@@ -609,8 +677,8 @@ def chunk(c, carry):
+             agq, agk, gev_a, fw = carry
+             oe = c * BE + jnp.arange(BE)
+             emask = oe < n_a
+-            jj = plgpu.load(nbr.at[a, oe], mask=emask, other=0)
+-            ux, uy, uz, r, ce, dce = _geometry(px, py, pz, jj, emask, ax, ay, az, Lx, Ly, Lz, rc)
++            jj, sh = _edge(plgpu.load(nbr.at[a, oe], mask=emask, other=0), KS)
++            ux, uy, uz, r, ce, dce = _geometry(px, py, pz, jj, emask, ax, ay, az, Lx, Ly, Lz, rc, sh)
+             rt, drt = _floor(r, za, jj, emask, z, rmin, ZMAX)
+             nz = ce != 0.0
+             i0, u = _table_coords(rt, spacing, n_int)
+@@ -681,7 +749,7 @@ def degree(j, c2):
+ # short-range pairs: the repulsion (per-atom energy, forces)
+ # =========================================================================== #
+ def _sr_kernel(px, py, pz, z, nbr, cnt, rep_a, rep_b, scal, fw_in, boxl, rows, energy, fw_o, *, ZMAX, NK, NKP,
+-               N, APP):
++               N, APP, KS=0):
+     """Per-atom repulsion energy (half of each pair) and its forces: NLH, or the legacy
+     so3lr's ZBL, both a screening sum_k A_k exp(-B_k r) tabulated per element pair."""
+     def atom(a):
+@@ -697,8 +765,8 @@ def chunk(c, carry):
+             e_a, fw = carry
+             oe = c * BE + jnp.arange(BE)
+             emask = oe < n_a
+-            jj = plgpu.load(nbr.at[a, oe], mask=emask, other=0)
+-            ux, uy, uz, r, ce, dce = _geometry(px, py, pz, jj, emask, ax, ay, az, Lx, Ly, Lz, rc)
++            jj, sh = _edge(plgpu.load(nbr.at[a, oe], mask=emask, other=0), KS)
++            ux, uy, uz, r, ce, dce = _geometry(px, py, pz, jj, emask, ax, ay, az, Lx, Ly, Lz, rc, sh)
+             zb = plgpu.load(z.at[jj], mask=emask, other=1)
+             lo = jnp.minimum(za, zb) - 1
+             hi = jnp.maximum(za, zb) - 1
+@@ -730,9 +798,14 @@ def chunk(c, carry):
+ # long range: electrostatics (tabulated phi) and dispersion, streamed from the grid
+ # =========================================================================== #
+ def _lr_kernel(px, py, pz, z, q, a0r, c6r, alphas, c6tab, order, cell_start, cell_of,
+-               phi_v, phi_d, lrs, e_in, fw_in, scratch_in, boxl, c6lr_v, c6lr_d, rows, energy, gq, ga0, gc6,
+-               fw_o, scratch, most,
+-               *, N, NX, NY, NZ, KC, MAXH, ELEC, DISP, DPME, FAR, EL_SWITCH, DISP_SWITCH):
++               phi_v, phi_d, lrs, e_in, fw_in, scratch_in, boxl, c6lr_v, c6lr_d, rows, image_in, energy, gq, ga0,
++               gc6, fw_o, scratch, most, image,
++               *, N, NX, NY, NZ, KC, MAXH, ELEC, DISP, DPME, FAR, EL_SWITCH, DISP_SWITCH, IMG=False):
++    """IMG: a box under 2 x the reach across (check.image_grid). The walk goes kc cells each
++    way without wrapping, through the periodic images (a side of fewer than 2 kc + 1 cells
++    is walked more than once, each time as another image), and each partner within the
++    reach is an atom and its image, image[pid, slot] (``_pack``), the displacement formed
++    from the wrapped positions (``_pos3``) plus the shift; an atom's own images included."""
+     pid = _i32(pl.program_id(0))
+     nprog = _i32(pl.num_programs(0))
+     # [rc, phi spacing, phi intervals, ke, damping start, gamma_scale, fs^(-4/21), hartree,
+@@ -750,6 +823,9 @@ def _lr_kernel(px, py, pz, z, q, a0r, c6r, alphas, c6tab, order, cell_start, cel
+     sx, sy, sz = sxd.astype(dt), syd.astype(dt), szd.astype(dt)
+     b0, b1, b2, b3 = (jnp.asarray(v, dt) for v in (-0.00433008, 0.24428889, 0.04125273, -0.00078893))
+     p0 = jnp.asarray(5.08, dt)
++    # IMG: the shifts are within [-IB, IB] boxes per axis (_pack)
++    IB = KC + 1
++    I0 = _pack((0, 0, 0), IB)                                   # no shift: the atom itself
+ 
+     def atom(it, most_seen):
+         # N rows from rows[0] on (a device's own rows)
+@@ -763,6 +839,12 @@ def atom(it, most_seen):
+         oy = jnp.clip(ay - Ly * jnp.floor(ay / Ly) - cy.astype(ay.dtype) * syd, 0.0, syd).astype(dt)
+         oz = jnp.clip(az - Lz * jnp.floor(az / Lz) - cz.astype(az.dtype) * szd, 0.0, szd).astype(dt)
+ 
++        def image_d(j, m, sh):
++            """IMG: the displacement to atom j's image shifted by sh (boxes per axis; the
++            positions wrapped into the box, _pos3)."""
++            return tuple((plgpu.load(p_.at[j], mask=m, other=0.0) + s_.astype(L_.dtype) * L_ - a_).astype(dt)
++                         for p_, L_, s_, a_ in zip((px, py, pz), (Lx, Ly, Lz), sh, (ax, ay, az)))
++
+         # ---- pass 1: partners within the cutoff into this program's scratch row ----
+         def row_fn(k, nh):
+             dzc = _div(k, 2 * KC + 1) - KC
+@@ -776,6 +858,38 @@ def row_fn(k, nh):
+             lo = jnp.maximum(cx + jnp.floor((ox - xr) / sx).astype(jnp.int32), cx - KC)
+             hi = jnp.minimum(cx + jnp.floor((ox + xr) / sx).astype(jnp.int32), cx + KC)
+             hi = jnp.where(g2 < reach2, hi, lo - 1)
++            if IMG:
++                # cells unwrapped: the cell and its image's shift
++                zc, shz = _unwrap(cz + dzc, NZ, KC)
++                yc, shy = _unwrap(cy + dyc, NY, KC)
++                row = (zc * NY + yc) * NX
++                p_lo = _unwrap(lo, NX, KC)[1]                        # the period of cell lo
++
++                def image_part(part, nh):
++                    # the columns lo..hi within period p_lo + part: cells c0..c1, shift p_lo + part
++                    shx = p_lo + part
++                    base = shx * NX
++                    c0 = jnp.maximum(lo, base) - base
++                    c1 = jnp.minimum(hi, base + NX - 1) - base
++                    c1 = jnp.where(hi >= lo, c1, c0 - 1)
++                    s = cell_start[row + c0]
++                    e = jnp.where(c1 >= c0, cell_start[row + jnp.maximum(c1, c0 - 1) + 1], s)
++                    code = _pack((shx, shy, shz), IB)
++
++                    def chunk(tc, nh):
++                        ks = s + tc * BL + jnp.arange(BL)
++                        m = ks < e
++                        j = plgpu.load(order.at[ks], mask=m, other=0)
++                        dx, dy, dz = image_d(j, m, (shx, shy, shz))
++                        r2 = dx * dx + dy * dy + dz * dz
++                        hit = m & (r2 < reach2) & ((j != a) | (code != I0)) & (r2 > 0.0)
++                        slot = nh + jnp.cumsum(hit.astype(jnp.int32)) - 1
++                        plgpu.store(scratch.at[pid, slot], j, mask=hit & (slot < MAXH))
++                        plgpu.store(image.at[pid, slot], j * 0 + code, mask=hit & (slot < MAXH))
++                        return (nh + jnp.sum(hit.astype(jnp.int32))).astype(jnp.int32)
++                    return lax.fori_loop(0, _cdiv(e - s, BL), chunk, nh)
++                # lo..hi spans at most 2 KC + 1 cells: this many periods of NX
++                return lax.fori_loop(0, (2 * KC + NX) // NX + 1, image_part, nh)
+             zc = _rem(cz + dzc + NZ, NZ)
+             yc = _rem(cy + dyc + NY, NY)
+             row = (zc * NY + yc) * NX
+@@ -823,9 +937,13 @@ def pairs(tc, acc):
+             hidx = tc * BL + jnp.arange(BL)
+             hit = hidx < n_use
+             j = plgpu.load(scratch.at[pid, hidx], mask=hit, other=0)
+-            dx = _min_image(plgpu.load(px.at[j], mask=hit, other=0.0) - ax, Lx).astype(dt)
+-            dy = _min_image(plgpu.load(py.at[j], mask=hit, other=0.0) - ay, Ly).astype(dt)
+-            dz = _min_image(plgpu.load(pz.at[j], mask=hit, other=0.0) - az, Lz).astype(dt)
++            if IMG:
++                code = plgpu.load(image.at[pid, hidx], mask=hit, other=I0)
++                dx, dy, dz = image_d(j, hit, _unpack(code, IB))
++            else:
++                dx = _min_image(plgpu.load(px.at[j], mask=hit, other=0.0) - ax, Lx).astype(dt)
++                dy = _min_image(plgpu.load(py.at[j], mask=hit, other=0.0) - ay, Ly).astype(dt)
++                dz = _min_image(plgpu.load(pz.at[j], mask=hit, other=0.0) - az, Lz).astype(dt)
+             r = jnp.sqrt(jnp.where(hit, dx * dx + dy * dy + dz * dz, reach2 * 0.25))
+             de = jnp.zeros_like(r)
+             ti, tu = _table_coords(jnp.minimum(r, rtab) if FAR else r, phs, phn, column=False)
+@@ -894,7 +1012,7 @@ def hermite(tv, td):
+                 g6 = hw * dv_c6 * dc6_dc6
+                 if DPME:
+                     # with dispersion PME the mesh adds sqrt(C6_a C6_b) lr(R) for every
+-                    # pair, so the real-space part is the residual (so3lr_dev's split);
++                    # pair, so the real-space part is the residual (so3lr's split);
+                     # lr is a table of r like phi
+                     c6g = jnp.sqrt(c6_a * c6_b)
+                     lr6, dlr6 = hermite(c6lr_v, c6lr_d)
+@@ -963,7 +1081,7 @@ def _phi_table(rc, sigma, n, smearing=None, end=None):
+     """The electrostatic pair function phi(r) = V(r) - V(rc) - (1 - f) V'(rc) (r - rc),
+     V = erf(r/sigma)/r, f = switching_fn(r, 0.45 rc, rc), and phi', on [0, end] (default
+     rc). With PME (Ewald ``smearing``) V = erf(r/sigma)/r - erf(r/(sqrt(2) smearing))/r, the
+-    mesh's part taken out (so3lr_dev's coulomb_erf_shifted_force_smooth_pme)."""
++    mesh's part taken out (so3lr's coulomb_erf_shifted_force_smooth_pme)."""
+     from scipy.special import erf
+     r = np.linspace(0.0, rc if end is None else end, n + 1)
+     rs = np.where(r > 0, r, 1.0)
+@@ -996,7 +1114,7 @@ def sw(x, on, off):
+ 
+ def _c6_lr_table(rc, smearing_bohr, n, bohr):
+     """lr(R) = (1 - exp(-x) (1 + x + x^2/2)) / R^6, x = R^2 / (2 s^2), R and s in Bohr:
+-    the part of 1/R^6 the dispersion mesh carries (jaxpme lr_r of so3lr_dev's
++    the part of 1/R^6 the dispersion mesh carries (jaxpme lr_r of so3lr's
+     c6_raw_potential), and d lr/dr per A, on the grid of _phi_table. Below x = 0.5, where
+     the closed form cancels, the series lr = e^-x sum_k>=3 x^(k-3)/k! / (2 s^2)^3."""
+     from math import factorial
+@@ -1016,17 +1134,17 @@ def _c6_lr_table(rc, smearing_bohr, n, bohr):
+ 
+ 
+ # =========================================================================== #
+-# particle-mesh Ewald: the mesh part (jaxpme's pme solver, as so3lr_dev's
++# particle-mesh Ewald: the mesh part (jaxpme's pme solver, as so3lr's
+ # --kspace-electrostatics pme and --kspace-dispersion pme use it)
+ # =========================================================================== #
+ def pme_mesh_shape(L, spacing):
+-    """The PME mesh so3lr_dev builds for an orthorhombic box of sides L."""
++    """The PME mesh so3lr builds for an orthorhombic box of sides L."""
+     return kspace_grid_shape("pme", spacing, np.diag(np.asarray(L, np.float64)))
+ 
+ 
+ def _pme_potential(kind):
+     """jaxpme's potential (lr, with k = 0 masked) and raw potential (the self and
+-    background corrections) for Coulomb or so3lr_dev's C6 dispersion."""
++    background corrections) for Coulomb or so3lr's C6 dispersion."""
+     raw = jaxpme.potentials.coulomb() if kind == "coulomb" else c6_raw_potential()
+     return jaxpme.potentials.potential(custom_potential=raw), raw
+ 
+@@ -1116,7 +1234,7 @@ def contract(a, b, c, f):
+ 
+ 
+ def _pme_part(pos3, w, L, mesh, Lk, smearing, kind, sign, dt, chunk, at=None, w_at=None):
+-    """The mesh part of PME as so3lr_dev adds it (jaxpme's pme kspace with its self and
++    """The mesh part of PME as so3lr adds it (jaxpme's pme kspace with its self and
+     background corrections) for weights w (charges, or sqrt(C6)), smearing and Lk in the
+     potential's unit: E = sign sum_i w_i pot_i, pot = (phi + c) / 2,
+     c = -w self - 2 bg sum(w) / V. The per-atom energy, dE/dw, forces (three arrays) and
+@@ -1150,7 +1268,7 @@ def pme_dispersion(pos3, qd, L, mesh, smearing, bohr, hartree, dt, chunk=1 << 20
+ # =========================================================================== #
+ # the engine
+ # =========================================================================== #
+-# the constants so3lr_dev uses (ase.units)
++# the constants so3lr uses (ase.units)
+ ASE_UNITS = dict(ke=14.399645351950548, hartree=27.211386024367243, bohr=0.5291772105638411)
+ TABLE_INTERVALS = 4096       # radial filter tables on [0, 1.05 cutoff]
+ PAIR_INTERVALS = 16384       # long-range pair tables on [0, lr cutoff]
+@@ -1252,7 +1370,7 @@ def _unsorted(f, perm):
+ class FlashSO3LR:
+     """Energy and forces of SO3LR (params, statics from ``loader.load_params``) for atoms
+     ``z`` in an orthorhombic periodic ``box``, or in free space (box None, laid out for
+-    atoms of ``size``, ``check.vacuum_size``), with so3lr_dev's descriptor floor at
++    atoms of ``size``, ``check.vacuum_size``), with so3lr's descriptor floor at
+     contacts. The memory options are those of ``MODES``. sort_atoms: each force call runs
+     with the atoms along a Morton curve of the box (``spatial_order``), the forces given
+     back in the input's order, so the rows a device or a chunk of the CUDA kernels takes,
+@@ -1316,7 +1434,7 @@ def __init__(self, params, statics, z, box, *, total_charge=0.0, total_spin=0.0,
+         self.sort_atoms = bool(sort_atoms)
+         self.staged = bool(staged)
+         # the charge embedding sees total_charge, the charge equilibration conserves
+-        # equilibration_charge (so3lr_dev's two overrides; both follow total_charge by default)
++        # equilibration_charge (so3lr's two overrides; both follow total_charge by default)
+         self.total_charge = float(total_charge if equilibration_charge is None else equilibration_charge)
+         dt = self.dtype
+         self.F, _, self.G, self.M, self.sh = model_widths(params, statics)
+@@ -1358,7 +1476,7 @@ def __init__(self, params, statics, z, box, *, total_charge=0.0, total_spin=0.0,
+         self.rep_b = jnp.asarray(params["repulsion_b"], dt).reshape(-1)
+         self.zmax = int(params["repulsion_a"].shape[0])
+         self.nk = int(params["repulsion_a"].shape[-1])
+-        self.rmin = jnp.asarray(nlh_reference_distance(), dt).reshape(-1)     # so3lr_dev's floor
++        self.rmin = jnp.asarray(nlh_reference_distance(), dt).reshape(-1)     # so3lr's floor
+         # long range
+         sig = float(statics["electrostatic_energy_scale"])
+         self.elec = sig != 0.0
+@@ -1390,7 +1508,8 @@ def __init__(self, params, statics, z, box, *, total_charge=0.0, total_spin=0.0,
+         self.alphas = jnp.asarray(statics["dispersion_alphas"], dt)
+         self.c6tab = jnp.asarray(statics["dispersion_c6"], dt)
+         self.lr_programs = lr_programs()
+-        self.maxh = min(int(lr_scratch), n)        # no atom has more partners than n - 1
++        self.lr_scratch = int(lr_scratch)
++        self.maxh = min(self.lr_scratch, n)        # long-range scratch per atom; the layout adjusts it
+         self.builds = 0
+         self.atoms_per_program = atoms_per_program
+         if self.vacuum:
+@@ -1411,18 +1530,24 @@ def _layout(self, L):
+         """What depends on the box beyond its value: the cell grid's cells per side and
+         long-range reach in cells, laid out for the box shrunk by box_margin (so it holds
+         for any box within the margin), and the PME meshes (fixed between layouts, as
+-        so3lr_dev keeps its k-grid)."""
++        so3lr keeps its k-grid)."""
+         L = [float(v) for v in L]
+         small = [v * (1.0 - self.box_margin) for v in L]
+-        if box_problem(small, self.rc, self.reach):
++        images = not self.vacuum          # free space's box is the minimum image's (check.vacuum_box)
++        if box_problem(small, self.rc, self.reach, images):
+             small = L                     # near the smallest box: no room to shrink in this layout
+-        problem = grid_problem(small, self.rc, self.reach)
++        problem = grid_problem(small, self.rc, self.reach, images, self.n)
+         if problem:
+             raise ValueError(problem + (" (an atom far from the rest? free space takes a box around all of them)"
+                                         if self.vacuum else ""))
+         self.L, self.L_lo = L, small
+         self.box = jnp.asarray(L, jnp.float64 if jax.config.jax_enable_x64 else self.dtype)
+-        self.nc, self.kc = cell_grid(small, self.rc, self.reach)
++        # images: a box under 2 x the reach across, the long range over its periodic images
++        self.nc, self.kc, self.images, self.ks = grid_layout(small, self.rc, self.reach, images)
++        # an atom's long-range partners: at most n - 1 with the minimum image; with the
++        # images as many as the density gives within the reach (more than n - 1 in a box
++        # smaller than the reach)
++        self.maxh = max(self.maxh, self.lr_scratch) if self.images else min(self.maxh, self.n)
+         self.mesh_el, self.mesh_disp = self._meshes(L)
+         for m in (self.mesh_el, self.mesh_disp):
+             if m and math.prod(m) >= 2 ** 31:
+@@ -1690,7 +1815,7 @@ def _attend(self, li, x_l, ev_l, pos3, nbr, cnt):
+             be, warps = self.launch["fwd"]
+             progs, app = self._row_grid(warps)
+             kern = partial(_att_fwd_kernel, G=self.G, ND=self.nh, MP=self.MP, ZMAX=self.zmax, YS=self.ys,
+-                           CH=ch, BE=be, H0=h0, NH=nh, N=self.nl, APP=app)
++                           CH=ch, BE=be, H0=h0, NH=nh, N=self.nl, APP=app, KS=self.ks)
+             x1, ev1 = pl.pallas_call(
+                 kern, grid=(progs,), compiler_params=_cp(warps),
+                 out_shape=(jax.ShapeDtypeStruct((n, F), dt), jax.ShapeDtypeStruct((n, self.M), dt)),
+@@ -1736,7 +1861,7 @@ def _attention_backward_pass(self, li, pi, x_l, ev, pos3, nbr, cnt, gdx, gdev, c
+         t1v, t1d, t2v, t2d = self.tables[li]
+         sf = lambda name, k: p[f"{name}_layer_{k}"]
+         px, py, pz = pos3
+-        meta = dict(G=self.G, ND=self.nh, MP=self.MP, ZMAX=self.zmax)
++        meta = dict(G=self.G, ND=self.nh, MP=self.MP, ZMAX=self.zmax, KS=self.ks)
+         shp = jax.ShapeDtypeStruct
+         inplace = self._inplace(li)
+         ch, which, h0, nh = self._passes()[pi]
+@@ -1814,7 +1939,8 @@ def build(self, pos3):
+         progs, app = self._row_grid(1)
+         # one warp, one wavefront on ROCm (as measured)
+         nbr, cnt = pl.pallas_call(
+-            partial(_ell_kernel, NX=nx, NY=ny, NZ=nz, K=self.K, BLE=16, N=self.nl, APP=app), grid=(progs,),
++            partial(_ell_kernel, NX=nx, NY=ny, NZ=nz, K=self.K, BLE=16, N=self.nl, APP=app, KS=self.ks),
++            grid=(progs,),
+             compiler_params=_cp(1),
+             out_shape=(jax.ShapeDtypeStruct((n, self.K), jnp.int32), jax.ShapeDtypeStruct((n,), jnp.int32)),
+         )(px, py, pz, order, cell_start, cell_of, self.geo, self._box(px), self._row_arg())
+@@ -1826,6 +1952,13 @@ def _pos3(self, R):
+         """x, y, z columns: float64 positions stay float64 (with a float32 model: mixed
+         precision, the displacements formed in float64), others become the model dtype."""
+         R = R if R.dtype == jnp.float64 else R.astype(self.dtype)
++        if self.images:
++            # over the periodic images each pair's shift is the image's in boxes, so every
++            # kernel takes the same positions wrapped into the box (an atom on the far face
++            # rounded onto it is at 0)
++            L = self._box(R[:, 0])
++            R = _wrap(R, L)
++            R = jnp.where(R >= L, R - L, R)
+         return (R[:, 0], R[:, 1], R[:, 2])
+ 
+     def _box(self, px):
+@@ -1875,7 +2008,7 @@ def _head_local(self, x, pos3, nb):
+         warps = _warps(NUM_WARPS)
+         progs, app = self._row_grid(warps)
+         e_atom, fw = pl.pallas_call(
+-            partial(_sr_kernel, ZMAX=self.zmax, NK=self.nk, NKP=nkp, N=self.nl, APP=app),
++            partial(_sr_kernel, ZMAX=self.zmax, NK=self.nk, NKP=nkp, N=self.nl, APP=app, KS=self.ks),
+             grid=(progs,), compiler_params=_cp(warps),
+             out_shape=(shp((n,), dt), (shp((n,), dt),) * NFW),
+             input_output_aliases={9 + k: 1 + k for k in range(NFW)},
+@@ -1899,19 +2032,24 @@ def _long_range(self, pos3, grid, q, a0, c6, e_atom, f3):
+         # two warps, two wavefronts on ROCm (as measured)
+         nprog = min(self.lr_programs, self.nl)
+         scratch = jnp.zeros((nprog, self.maxh), jnp.int32)
+-        e_atom, gq, ga0, gc6, fw, _, most = pl.pallas_call(
++        # each partner's periodic image where the box is under 2 x the reach (one column
++        # unused where not)
++        image = jnp.zeros((nprog, self.maxh if self.images else 1), jnp.int32)
++        e_atom, gq, ga0, gc6, fw, _, most, _ = pl.pallas_call(
+             partial(_lr_kernel, N=self.nl, NX=self.nc[0], NY=self.nc[1], NZ=self.nc[2], KC=self.kc,
+                     MAXH=self.maxh, ELEC=self.elec, DISP=self.disp, DPME=self.pme_disp is not None,
+                     FAR=self.r_tab < self.reach, EL_SWITCH=self.reach > 0.45 * self.rc_lr,
+-                    DISP_SWITCH=self.reach > self.rc_lr - self.statics["dispersion_energy_cutoff_lr_damping"]),
++                    DISP_SWITCH=self.reach > self.rc_lr - self.statics["dispersion_energy_cutoff_lr_damping"],
++                    IMG=self.images),
+             grid=(nprog,), compiler_params=_cp(2),
+             out_shape=(shp((n,), dt),) * 4 + ((shp((n,), dt),) * NFW, shp((nprog, self.maxh), jnp.int32),
+-                                             shp((nprog,), jnp.int32)),
+-            # e_atom, the NFW sums and the scratch in place
+-            input_output_aliases={15: 0, **{16 + k: 4 + k for k in range(NFW)}, 16 + NFW: 4 + NFW},
++                                             shp((nprog,), jnp.int32), shp(image.shape, jnp.int32)),
++            # e_atom, the NFW sums and the scratch rows in place
++            input_output_aliases={15: 0, **{16 + k: 4 + k for k in range(NFW)}, 16 + NFW: 4 + NFW,
++                                  21 + NFW: 6 + NFW},
+         )(px, py, pz, self.z, q, a0, c6, self.alphas, self.c6tab, order, cell_start, cell_of,
+           self.phi_v, self.phi_d, self.lrs, e_atom, tuple(f3), scratch, self._box(px), self.c6lr_v, self.c6lr_d,
+-          self._row_arg())
++          self._row_arg(), image)
+         return e_atom, gq, ga0, gc6, fw, jnp.max(most)
+ 
+     def _pme_terms(self, pos3, q, c6, e_atom, gq, gc6, f3):
+@@ -2204,7 +2342,7 @@ def energy_forces_strain_staged(self, R, diag=False):
+     def widen(self):
+         """Wider neighbour rows and long-range scratch after an overflow; recompiles."""
+         self.K = int(math.ceil(self.K * 1.25 / 16) * 16)
+-        self.maxh = min(int(self.maxh * 1.5), self.n)
++        self.maxh = int(self.maxh * 1.5) if self.images else min(int(self.maxh * 1.5), self.n)
+         if self.cuda_kernels is not None:
+             self.cuda_kernels.replan()   # the per-pair data in chunks where kept it no longer fits
+         self._build_jit()
+@@ -2235,7 +2373,7 @@ def energy_forces(self, R):
+     def set_box(self, L, exact_mesh=False):
+         """A new orthorhombic box (sides L) for the next calls, e.g. an NPT step. Within
+         the margin the cell grid was laid out for, nothing compiles; outside it the
+-        grid (and the PME mesh, as so3lr_dev's re-tuning would) is laid out again for L.
++        grid (and the PME mesh, as so3lr's re-tuning would) is laid out again for L.
+         exact_mesh: also lay out again where L's PME mesh differs from the current one,
+         so each box gets the mesh a single point of it builds (so3lr eval, ASE)."""
+         L = [float(v) for v in np.asarray(L, np.float64).reshape(-1)[:3]]
+diff --git a/so3lr/flash/verify.py b/so3lr/flash/verify.py
+index 70a7ce33..254d1828 100644
+--- a/so3lr/flash/verify.py
++++ b/so3lr/flash/verify.py
+@@ -80,7 +80,7 @@ def main(argv=None):
+         k_grid, k_smearing = setup_kspace_grid(kel, args.kspace_smearing, args.kspace_spacing, box)
+         k_grid_disp, k_smearing_disp = setup_kspace_grid(kdi, args.kspace_smearing, args.kspace_spacing, box)
+         if kel or kdi:
+-            print(f"  meshes: so3lr_dev {None if k_grid is None else k_grid.shape} "
++            print(f"  meshes: so3lr {None if k_grid is None else k_grid.shape} "
+                   f"{None if k_grid_disp is None else k_grid_disp.shape}, flash {eng.mesh_el} {eng.mesh_disp}")
+         energy_fn = partial(energy_or_obs_fn, has_aux=False, k_smearing=k_smearing, k_smearing_disp=k_smearing_disp)
+         nbrs = neighbor_fn.allocate(position, box=box)
+diff --git a/tests/test_flash.py b/tests/test_flash.py
+index 0ccc4801..42c74874 100644
+--- a/tests/test_flash.py
++++ b/tests/test_flash.py
+@@ -2,7 +2,7 @@
+ (NVIDIA, AMD Instinct) the engine against the neighbour-list potential.
+ 
+ Without a GPU: PME's mesh part and its strain derivative against jaxpme, the real-space
+-tables against so3lr_dev's pair functions, the reasons the engine choice gives (every
++tables against so3lr's pair functions, the reasons the engine choice gives (every
+ settings key and model hyperparameter classified), the box free space runs in,
+ ``so3lr nvt`` logging the engine it picked and, falling back to the neighbour-list
+ potential, why, and the MD driver around a stand-in for the engine (PySAGES runs as
+@@ -118,7 +118,7 @@ def e_ref(R, qd, s=1.0):
+ 
+ @pytest.mark.parametrize("smearing", [None, 2.0])
+ def test_electrostatic_table(smearing):
+-    """The tabulated pair function against so3lr_dev's, with and without PME."""
++    """The tabulated pair function against so3lr's, with and without PME."""
+     from so3lr.mlff.nn.observable import observable_sparse as O
+     rc, sigma = 10.0, 4.0
+     phi, dphi, _ = E._phi_table(rc, sigma, 16384, smearing=smearing)
+@@ -136,7 +136,7 @@ def test_electrostatic_table(smearing):
+ 
+ def test_electrostatic_far_field():
+     """A 1000 A cutoff (the gas phase's): the table out to 8 sigma, and past it the closed
+-    form the long-range kernel takes (_far_field), give so3lr_dev's pair function and its
++    form the long-range kernel takes (_far_field), give so3lr's pair function and its
+     derivative, and meet at the table's end; below 0.45 rc the closed form without its
+     switching function is the same."""
+     from so3lr.mlff.nn.observable import observable_sparse as O
+@@ -175,7 +175,7 @@ def test_c6_mesh_table():
+ 
+ 
+ def test_legacy_pieces_match_so3lr():
+-    """The legacy so3lr's own pieces against so3lr_dev's modules (float64): LayerNorm, the
++    """The legacy so3lr's own pieces against the current so3lr modules (float64): LayerNorm, the
+     Hirshfeld-ratio head, and the learnable ZBL repulsion from the repulsion kernel's tables."""
+     import flax.linen as nn
+     from so3lr.flash import blocks
+@@ -271,8 +271,13 @@ def test_fixed_atoms_after_a_restart():
+ 
+ 
+ def test_engine_choice_small_box(monkeypatch):
++    """A box under 2 x the cutoffs runs on flash (over the periodic images); one a
++    long-range cutoff far beyond it would make the images' walk too long for does not."""
+     monkeypatch.setattr(check, "device_problem", lambda: None)
+-    assert "narrower than twice the cutoff" in check.flash_problem(SETTINGS, _water((1, 1, 1)))
++    tiny = _water((1, 1, 1))[:3]
++    tiny.set_cell(np.eye(3) * 4.0)
++    assert check.flash_problem(SETTINGS, tiny) is None
++    assert "too small for its cutoffs" in check.flash_problem(dict(SETTINGS, lr_cutoff=1000.0), _water((1, 1, 1)))
+ 
+ 
+ @pytest.mark.parametrize("task,change,reason", [
+@@ -376,23 +381,40 @@ def test_model_architecture_check(tmp_path, model, edit, reason):
+ 
+ 
+ def test_cell_grid_takes_every_box_from_the_smallest():
+-    """Every cubic box from the smallest the grid takes on is accepted (cells rc wide where
+-    they leave enough per side, wider ones where not); a large box keeps rc-wide cells."""
++    """Every cubic box from the smallest the minimum image's grid takes on is accepted
++    there (cells rc wide where they leave enough per side, wider ones where not); a large
++    box keeps rc-wide cells. Below it the periodic images' grid takes every box, the short
++    range over the images too under 2 rc, and only where the minimum image's has none."""
+     for rc, lr, smallest in [(4.5, 10.0, 25.0), (4.5, 12.0, 30.0), (5.0, 12.0, 30.0)]:
+-        assert check.box_problem([smallest - 0.1] * 3, rc, lr) is not None
++        assert check.box_problem([smallest - 0.1] * 3, rc, lr, images=False) is not None
+         for L in np.arange(smallest, 60.0, 0.1):
++            assert check.box_problem([L] * 3, rc, lr, images=False) is None, (rc, lr, L)
++            assert check.layout([L] * 3, rc, lr)[2:] == (False, 0)
++        for L in np.arange(1.0, smallest, 0.1):
+             assert check.box_problem([L] * 3, rc, lr) is None, (rc, lr, L)
++            nc, kc, images, ks = check.layout([L] * 3, rc, lr)
++            w = L / nc[0]
++            assert images and kc * w >= lr and (ks * w >= rc if ks else min(nc) >= 2), (rc, lr, L, nc, kc, ks)
++            assert (ks > 0) == (L < 2 * rc), (rc, lr, L, ks)
+     assert check.cell_grid([49.6] * 3, 4.5, 12.0) == ([11, 11, 11], 3)
++    assert check.layout([12.4] * 3, 4.5, 12.0) == ([2, 2, 2], 2, True, 0)
++    # a slab: the thin side alone takes the images
++    assert check.layout([49.6, 49.6, 12.4], 4.5, 12.0) == ([11, 11, 2], 3, True, 0)
++    assert check.layout([3.567, 3.567, 7.134], 4.5, 12.0) == ([1, 1, 1], 4, True, 2)
++    # ks 2: each atom has 125 packed entries, which must fit an int32
++    assert "int32" in check.grid_problem([3.567, 3.567, 7.134], 4.5, 12.0, n=2 ** 31 // 125 + 1)
++    # the images' walk is bounded: a 1000 A cutoff needs a box of the minimum image
++    assert check.box_problem([12.4] * 3, 4.5, 1000.0) is not None
+ 
+ 
+ def test_restart_box_is_checked(tmp_path, monkeypatch):
+     """A restart starts in its checkpoint's box, so that is the box auto checks."""
+     monkeypatch.setattr(check, "device_problem", lambda: None)
+     atoms = _water((3, 3, 3))
+-    np.savez(tmp_path / "small.npz", box=np.array([26.0, 26.0, 26.0]))
++    np.savez(tmp_path / "small.npz", box=np.array([0.5, 0.5, 0.5]))
+     np.savez(tmp_path / "same.npz", box=np.diag(atoms.cell[:]).copy())
+     problem = check.flash_problem(dict(SETTINGS, restart_load_path=str(tmp_path / "small.npz")), atoms)
+-    assert "too small for the cell grid" in problem, problem
++    assert "too small for its cutoffs" in problem, problem
+     assert check.flash_problem(dict(SETTINGS, restart_load_path=str(tmp_path / "same.npz")), atoms) is None
+ 
+ 
+@@ -507,7 +529,7 @@ def test_free_space_box_has_no_images_within_reach(rc_lr):
+         R = rng.normal(size=(n, 3)) * spread
+         size = check.vacuum_size(R)
+         L, reach = check.vacuum_box(size, rc, rc_lr)
+-        assert check.box_problem([L] * 3, rc, reach) is None
++        assert check.box_problem([L] * 3, rc, reach, images=False) is None
+         assert reach <= rc_lr
+         c = R.mean(0)
+         room = min(L - max(rc, reach), reach if reach < rc_lr else np.inf)      # the size vacuum_fits takes
+@@ -578,8 +600,8 @@ def test_flash_modes_match_the_engine():
+ 
+ @pytest.mark.parametrize("engine,line", [
+     ("standard", "Engine: neighbour-list potential (--engine standard)"),
+-    # 64 waters' 12.4 A box is narrower than twice the cutoff, so auto runs the
+-    # neighbour-list potential on any machine
++    # a 1000 A long-range cutoff makes 64 waters' 12.4 A box's walk over the periodic
++    # images too long for flash, so auto runs the neighbour-list potential on any machine
+     ("auto", "Engine: neighbour-list potential (flash cannot:"),
+ ])
+ def test_md_logs_its_engine(tmp_path, monkeypatch, engine, line):
+@@ -595,7 +617,7 @@ def test_md_logs_its_engine(tmp_path, monkeypatch, engine, line):
+     log = tmp_path / "out.log"
+     result = CliRunner().invoke(so3lr_cli.cli, ["nvt", "--input", str(DATA / "water_64.xyz"), "--no-relax",
+                                                 "--output", str(tmp_path / "out.hdf5"), "--log-file", str(log),
+-                                                "--engine", engine])
++                                                "--lr-cutoff", "1000", "--engine", engine])
+     assert result.exit_code == 0, result.output
+     assert line in log.read_text(), log.read_text()[-2000:]
+ 
+@@ -1923,3 +1945,72 @@ def test_cuda_kernels_asked_for_say_why_they_do_not_fit(monkeypatch):
+     with pytest.raises(RuntimeError, match="flash_kernels cuda.*GiB of the 0 free.*minimal"):
+         flash_md.build_engine(_water((3, 3, 3)), dict(model_path="so3lr-tauri-m-2606", flash_kernels="cuda"),
+                               jnp.float32)
++
++
++# ---- boxes under 2 x a cutoff: that range over the periodic images ----
++SMALL_PME = dict(pme_electrostatics=(2.0, 1.55), pme_dispersion=(2.0, 1.55))
++
++
++def _diamond():
++    """Rattled diamond in a 3.57 x 3.57 x 7.13 A box: every side under the short-range cutoff."""
++    from ase.build import bulk
++    atoms = bulk("C", "diamond", a=3.567, cubic=True).repeat((1, 1, 2))
++    atoms.rattle(0.05, seed=0)
++    return atoms
++
++
++# 64 waters' 12.4 A box (two cells a side; PME meshes that scale with the box) and diamond
++SMALL_BOXES = pytest.mark.parametrize("make,reps,kw", [(lambda: _water((1, 1, 1)), (4, 4, 4), SMALL_PME),
++                                                       (_diamond, (9, 9, 5), {})],
++                                      ids=["water-12A-pme", "diamond-3.6A"])
++
++
++@GPU
++@SMALL_BOXES
++def test_small_box_follows_its_supercell(make, reps, kw):
++    """A box under 2 x the cutoffs gives per copy what its supercell, wide enough for the
++    minimum image, gives: the energy per atom, each atom's force and dE/d(strain) per axis
++    (float64)."""
++    atoms = make()
++    big = atoms.repeat(reps)
++    n = int(np.prod(reps))
++    eng = _engine("so3lr-tauri-m-2606", atoms, "float64", **kw)
++    ref = _engine("so3lr-tauri-m-2606", big, "float64", **kw)
++    assert eng.images and not ref.images
++    if kw:
++        for m, m_ref in ((eng.mesh_el, ref.mesh_el), (eng.mesh_disp, ref.mesh_disp)):
++            assert [a * r for a, r in zip(m, reps)] == list(m_ref), (m, m_ref)
++    e, f, w = eng.energy_forces_strain(jnp.asarray(atoms.get_positions(), jnp.float64), diag=True)
++    e_ref, f_ref, w_ref = ref.energy_forces_strain(jnp.asarray(big.get_positions(), jnp.float64), diag=True)
++    _check("energy", float(e) * n, e_ref, 1e-10)
++    _check("forces", f, np.asarray(f_ref)[:len(atoms)], 1e-9)       # ase's repeat: the unit cell first
++    _check("dE/d(strain) per axis", np.asarray(w) * n, w_ref, 1e-9)
++
++
++@CUDA
++@SMALL_BOXES
++def test_cuda_small_box(make, reps, kw):
++    """The CUDA kernels in a box under 2 x the cutoffs give the float64 engine's energy,
++    forces and dE/d(strain) per axis to float32 accuracy."""
++    atoms = make()
++    R = atoms.get_positions()
++    e_ref, f_ref, w_ref = _engine("so3lr-tauri-m-2606", atoms, "float64", **kw).energy_forces_strain(
++        jnp.asarray(R, jnp.float64), diag=True)
++    eng = _engine("so3lr-tauri-m-2606", atoms, "float32", keep_attention=True, kernels="cuda", **kw)
++    assert eng.cuda_kernels is not None and eng.images
++    e, f, w = eng.energy_forces_strain(jnp.asarray(R, jnp.float32), diag=True)
++    _check("energy", e, e_ref, 1e-6)
++    _check("forces", f, f_ref, 1e-4)
++    _check("dE/d(strain) per axis", w, w_ref, 1e-4)
++
++
++@GPU
++def test_md_in_a_small_box_on_flash(tmp_path):
++    """`so3lr npt` on 64 waters (12.4 A, under 2 x the 12 A cutoff: the neighbour-list
++    engine refuses the box) runs on flash."""
++    from ase.io import write
++    write(tmp_path / "w.xyz", _water((1, 1, 1)))
++    _so3lr(["npt", "--input", "w.xyz", "--no-relax", "--md-cycles", "2", "--md-steps", "5", "--pressure", "1",
++            "--output", "a.hdf5"], tmp_path)
++    log = (tmp_path / "a.log").read_text()
++    assert "Engine: flash" in log, log[-2000:]

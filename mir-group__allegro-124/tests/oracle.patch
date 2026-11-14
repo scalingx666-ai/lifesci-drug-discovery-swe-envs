@@ -1,0 +1,598 @@
+diff --git a/.github/workflows/tests.yaml b/.github/workflows/tests.yaml
+index 1ad3b6c..c315655 100644
+--- a/.github/workflows/tests.yaml
++++ b/.github/workflows/tests.yaml
+@@ -34,10 +34,13 @@ jobs:
+     - name: Install git
+       run: |
+         apt install git -y
+-    - name: Clone NequIP packages GitHub
+-      if: github.event.repository.private == false
+-      run: |
+-        git clone -b ${{ github.event_name == 'pull_request' && github.base_ref || github.ref_name}} --depth 1 https://github.com/mir-group/nequip.git
++    - name: Clone NequIP packages
++      uses: mir-group/nequip-gh-actions/clone@main
++      with:
++        package_names: "nequip"
++        ssh_keys: "${{ secrets.NEQUIP }}"
++        private_flag: ${{ github.event.repository.private}}
++        branch: ${{ github.event_name == 'pull_request' && github.base_ref || github.ref_name}}
+     - name: Install PyTorch
+       env:
+         TORCH: "${{ matrix.torch-version }}"
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 8ed53b8..01c1aa3 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+ 
+ Most recent change on the bottom.
+ 
++## [0.5.0]
++
++[Breaking] Breaking changes to simplify the user interface for using Allegro models, including refactoring modules and removing hyperparameter options.
++
++### Added
++- Allegro model docs
++
++### Changed
++- [Breaking] refactored scalar MLP out of Bessel embedding
++- [Breaking] Allegro hyperparameter defaults
++
++### Removed
++- [Breaking] `so3` argument for `parity_setting` (only `o3_full` and `o3_restricted` allowed now)
++- [Breaking] turn `parity_setting` into a bool called `parity` (`true` corresponds to `o3_full`; `false` corresponds to `o3_restricted`)
++- [Breaking] `scalar_embed_output_dim` is no longer a hyperparameter (and is fixed as `num_scalar_features` in the Allegro model)
++
+ ## [0.4.0]
+ 
+ [Breaking] Major breaking changes wrt previous versions due to significant restructuring and refactoring for compatibility with `nequip` 0.7.0. Model checkpoints from previous versions will not be compatible with this version.
+diff --git a/allegro/_version.py b/allegro/_version.py
+index 38bc4b3..11bbadf 100644
+--- a/allegro/_version.py
++++ b/allegro/_version.py
+@@ -3,4 +3,4 @@
+ # See Python packaging guide
+ # https://packaging.python.org/guides/single-sourcing-package-version/
+ 
+-__version__ = "0.4.0"
++__version__ = "0.5.0"
+diff --git a/allegro/model/allegro_models.py b/allegro/model/allegro_models.py
+index 681a571..72810a4 100644
+--- a/allegro/model/allegro_models.py
++++ b/allegro/model/allegro_models.py
+@@ -37,22 +37,19 @@
+ @model_builder
+ def AllegroEnergyModel(
+     l_max: int,
+-    parity_setting: str = "o3_full",
++    parity: bool = True,
+     **kwargs,
+ ):
+-    assert parity_setting in ("o3_full", "o3_restricted", "so3")
+-    irreps_edge_sh = repr(
+-        o3.Irreps.spherical_harmonics(l_max, p=(1 if parity_setting == "so3" else -1))
+-    )
++    irreps_edge_sh = repr(o3.Irreps.spherical_harmonics(l_max, p=-1))
+     # set tensor_track_allowed_irreps
+     # note that it is treated as a set, so order doesn't really matter
+-    if parity_setting == "o3_full":
++    if parity:
+         # we want all irreps up to lmax
+         tensor_track_allowed_irreps = o3.Irreps(
+             [(1, (this_l, p)) for this_l in range(l_max + 1) for p in (1, -1)]
+         )
+     else:
+-        # for so3 or o3_restricted, we want only irreps that show up in the original SH
++        # we want only irreps that show up in the original SH
+         tensor_track_allowed_irreps = irreps_edge_sh
+ 
+     return FullAllegroEnergyModel(
+@@ -73,19 +70,22 @@ def AllegroModel(**kwargs):
+         per_edge_type_cutoff (Dict): one can optionally specify cutoffs for each edge type [must be smaller than ``r_max``] (default ``None``)
+         type_names (Sequence[str]): list of atom type names
+         l_max (int): maximum order :math:`\ell` to use in spherical harmonics embedding, 1 is baseline (fast), 2 is more accurate, but slower, 3 highly accurate but slow
+-        parity_setting (str): parity symmetry equivariance setting, with options ``o3_full``, ``o3_restricted``, ``so3`` (default ``o3_full``)
+-        scalar_embed: an Allegro-compatible two-body scalar embedding module, e.g. ``allegro.nn.TwoBodyBesselScalarEmbed``
++        parity (bool): whether to include features with odd mirror parity (default ``True``)
++        radial_chemical_embed: an Allegro-compatible two-body radial-chemical embedding module, e.g. ``allegro.nn.TwoBodyBesselScalarEmbed``
++        two_body_mlp_hidden_layers_depth (int): number of hidden layers of two-body MLP (default ``1``)
++        two_body_mlp_hidden_layers_width (int): depth of hidden layers of two-body MLP
++        two_body_mlp_nonlinearity (str): ``silu``, ``mish``, ``gelu``, or ``None`` (default ``silu``)
+         scalar_embed_output_dim (int): output dimension of the scalar embedding module (default ``None`` will use ``num_scalar_features``)
+         num_layers (int): number of Allegro layers
+         num_scalar_features (int): multiplicity of scalar features in the Allegro layers
+         num_tensor_features (int): multiplicity of tensor features in the Allegro layers
+-        allegro_mlp_hidden_layers_depth (int): number of hidden layers in the Allegro scalar MLPs
+-        allegro_mlp_hidden_layers_width (int): width of hidden layers in the Allegro scalar MLPs
++        allegro_mlp_hidden_layers_depth (int): number of hidden layers in the Allegro scalar MLPs (default ``1``)
++        allegro_mlp_hidden_layers_width (int): width of hidden layers in the Allegro scalar MLPs (reasonable to set it to be the same as ``num_scalar_features``)
+         allegro_mlp_nonlinearity (str): ``silu``, ``mish``, ``gelu``, or ``None`` (default ``silu``)
+         tp_path_channel_coupling (bool): whether Allegro tensor product weights couple the paths with the channels or not, ``True`` is expected to be more expressive than ``False`` (default ``True``)
+-        readout_mlp_hidden_layers_depth (int): number of hidden layers in the readout MLP
+-        readout_mlp_hidden_layers_width (int): width of hidden layers in the readout MLP
+-        readout_mlp_nonlinearity (str): ``silu``, ``mish``, ``gelu``, or ``None`` (default ``None``)
++        readout_mlp_hidden_layers_depth (int): number of hidden layers in the readout MLP (default ``1``)
++        readout_mlp_hidden_layers_width (int): width of hidden layers in the readout MLP (reasonable to set it to be the same as ``num_scalar_features``)
++        readout_mlp_nonlinearity (str): ``silu``, ``mish``, ``gelu``, or ``None`` (default ``silu``)
+         avg_num_neighbors (float): used to normalize edge sums for better numerics (default ``None``)
+         per_type_energy_scales (float/List[float]): per-atom energy scales, which could be derived from the force RMS of the data (default ``None``)
+         per_type_energy_shifts (float/List[float]): per-atom energy shifts, which should generally be isolated atom reference energies or estimated from average pre-atom energies of the data (default ``None``)
+@@ -104,21 +104,25 @@ def FullAllegroEnergyModel(
+     irreps_edge_sh: Union[int, str, o3.Irreps],
+     tensor_track_allowed_irreps: Union[str, o3.Irreps],
+     # scalar embed
+-    scalar_embed: Dict,
+-    scalar_embed_output_dim: Optional[int] = None,
++    radial_chemical_embed: Dict,
++    radial_chemical_embed_dim: Optional[int] = None,
+     per_edge_type_cutoff: Optional[Dict[str, Union[float, Dict[str, float]]]] = None,
++    # scalar embed MLP
++    scalar_embed_mlp_hidden_layers_depth: int = 1,
++    scalar_embed_mlp_hidden_layers_width: int = 64,
++    scalar_embed_mlp_nonlinearity: int = "silu",
+     # allegro layers
+     num_layers: int = 2,
+     num_scalar_features: int = 64,
+-    num_tensor_features: int = 64,
+-    allegro_mlp_hidden_layers_depth: int = 2,
++    num_tensor_features: int = 16,
++    allegro_mlp_hidden_layers_depth: int = 1,
+     allegro_mlp_hidden_layers_width: int = 64,
+     allegro_mlp_nonlinearity: Optional[str] = "silu",
+     tp_path_channel_coupling: bool = True,
+     # readout
+-    readout_mlp_hidden_layers_depth: int = 2,
++    readout_mlp_hidden_layers_depth: int = 1,
+     readout_mlp_hidden_layers_width: int = 32,
+-    readout_mlp_nonlinearity: Optional[str] = None,
++    readout_mlp_nonlinearity: Optional[str] = "silu",
+     # edge sum normalization
+     avg_num_neighbors: Optional[float] = None,
+     # allegro layers defaults
+@@ -139,13 +143,13 @@ def FullAllegroEnergyModel(
+         type_names=type_names,
+         per_edge_type_cutoff=per_edge_type_cutoff,
+     )
+-    scalar_embed_module = instantiate(
+-        scalar_embed,
++    radial_chemical_embed_module = instantiate(
++        radial_chemical_embed,
+         type_names=type_names,
+         module_output_dim=(
+             num_scalar_features
+-            if scalar_embed_output_dim is None
+-            else scalar_embed_output_dim
++            if radial_chemical_embed_dim is None
++            else radial_chemical_embed_dim
+         ),
+         forward_weight_init=forward_normalize,
+         scalar_embed_field=AtomicDataDict.EDGE_EMBEDDING_KEY,
+@@ -154,6 +158,18 @@ def FullAllegroEnergyModel(
+     # ^ note that this imposes a contract with two-body scalar embedding modules
+     # i.e. they must have `type_names`, `module_output_dim`, `scalar_embed_field`, `irreps_in`
+ 
++    scalar_embed_mlp = ScalarMLP(
++        output_dim=num_scalar_features,
++        hidden_layers_depth=scalar_embed_mlp_hidden_layers_depth,
++        hidden_layers_width=scalar_embed_mlp_hidden_layers_width,
++        nonlinearity=scalar_embed_mlp_nonlinearity,
++        bias=False,
++        forward_weight_init=forward_normalize,
++        field=AtomicDataDict.EDGE_EMBEDDING_KEY,
++        out_field=AtomicDataDict.EDGE_EMBEDDING_KEY,
++        irreps_in=radial_chemical_embed_module.irreps_out,
++    )
++
+     # === two-body tensor embedding ===
+     tensor_embed = TwoBodySphericalHarmonicTensorEmbed(
+         irreps_edge_sh=irreps_edge_sh,
+@@ -162,7 +178,7 @@ def FullAllegroEnergyModel(
+         scalar_embedding_in_field=AtomicDataDict.EDGE_EMBEDDING_KEY,
+         tensor_basis_out_field=AtomicDataDict.EDGE_ATTRS_KEY,
+         tensor_embedding_out_field=AtomicDataDict.EDGE_FEATURES_KEY,
+-        irreps_in=scalar_embed_module.irreps_out,
++        irreps_in=scalar_embed_mlp.irreps_out,
+     )
+ 
+     use_custom_kernel: Final[bool] = (
+@@ -205,7 +221,8 @@ def FullAllegroEnergyModel(
+ 
+     modules = {
+         "edge_norm": edge_norm,
+-        "scalar_embed": scalar_embed_module,
++        "radial_chemical_embed": radial_chemical_embed_module,
++        "scalar_embed_mlp": scalar_embed_mlp,
+         "tensor_embed": tensor_embed,
+         "allegro": allegro,
+     }
+diff --git a/allegro/nn/scalarembed.py b/allegro/nn/scalarembed.py
+index 26904e0..4318ddd 100644
+--- a/allegro/nn/scalarembed.py
++++ b/allegro/nn/scalarembed.py
+@@ -1,4 +1,4 @@
+-# This file is a part of the `allegro` package. Please see LICENSE and README at the root for information on using it.
++# This file is a part of the `allegro` package. Please see LICENSE and README at the root for information on using it.
+ from math import sqrt
+ import torch
+ 
+@@ -6,14 +6,14 @@
+ from e3nn.util.jit import compile_mode
+ 
+ from nequip.data import AtomicDataDict
+-from nequip.nn import GraphModuleMixin, SequentialGraphNetwork, ScalarMLP
++from nequip.nn import GraphModuleMixin, SequentialGraphNetwork
+ from nequip.nn.embedding import PolynomialCutoff, BesselEdgeLengthEncoding
+ from nequip.utils.global_dtype import _GLOBAL_DTYPE
+ 
+ from ._edgeembed import ProductTypeEmbedding
+ from .spline import PerClassSpline
+ 
+-from typing import Sequence, Optional
++from typing import Sequence
+ 
+ 
+ def TwoBodyBesselScalarEmbed(
+@@ -22,11 +22,6 @@ def TwoBodyBesselScalarEmbed(
+     num_bessels: int = 8,
+     bessel_trainable: bool = False,
+     polynomial_cutoff_p: int = 6,
+-    # two body MLP
+-    two_body_embedding_dim: int = 32,
+-    two_body_mlp_hidden_layers_depth: int = 2,
+-    two_body_mlp_hidden_layers_width: int = 64,
+-    two_body_mlp_nonlinearity: Optional[str] = "silu",
+     # model builder params
+     module_output_dim: int = 64,
+     forward_weight_init: bool = True,
+@@ -38,7 +33,7 @@ def TwoBodyBesselScalarEmbed(
+ 
+     The radial edge lengths are encoded with a Bessel basis, which is then projected to ``two_body_embedding_dim``.
+     The center-neighbor atom types are embedded with weights to the same ``two_body_embedding_dim``.
+-    The radial embedding and center-neighbor type embedding are multiplied and fed to a multilayer perception (``two_body_mlp``).
++    The radial embedding and center-neighbor type embedding are multiplied.
+ 
+     This module can be used for the ``scalar_embed`` argument of the ``AllegroModel`` in the config as follows.
+     ::
+@@ -51,19 +46,11 @@ def TwoBodyBesselScalarEmbed(
+           num_bessels: 8
+           bessel_trainable: false
+           polynomial_cutoff_p: 6
+-          two_body_embedding_dim: 32
+-          two_body_mlp_hidden_layers_depth: 2
+-          two_body_mlp_hidden_layers_width: 64
+-          two_body_mlp_nonlinearity: silu
+ 
+     Args:
+         num_bessels (int): number of Bessel basis functions (default ``8``)
+         bessel_trainable (int): whether Bessel roots are trainable (default ``False``)
+         polynomial_cutoff_p (int): p-exponent used in polynomial cutoff function, smaller p corresponds to stronger decay with distance (default ``6``)
+-        two_body_embedding_dim (int): intermediate embedding dimension before going through two-body MLP
+-        two_body_mlp_hidden_layers_depth (int): number of hidden layers of two-body MLP
+-        two_body_mlp_hidden_layers_width (int): depth of hidden layers of two-body MLP
+-        two_body_mlp_nonlinearity (str): ``silu``, ``mish``, ``gelu``, or ``None`` (default ``silu``)
+     """
+     # the following args are for internal use in model building:
+     # `type_names`, `module_output_dim`, `scalar_embed_field`, `irreps_in`
+@@ -78,29 +65,17 @@ def TwoBodyBesselScalarEmbed(
+     )
+     type_embed = ProductTypeEmbedding(
+         type_names=type_names,
+-        initial_embedding_dim=two_body_embedding_dim,
++        initial_embedding_dim=module_output_dim,
+         forward_weight_init=forward_weight_init,
+         radial_features_in_field=scalar_embed_field,
+         edge_embed_out_field=scalar_embed_field,
+         irreps_in=bessel_encode.irreps_out,
+     )
+ 
+-    twobody_mlp = ScalarMLP(
+-        # input dims from previous module
+-        field=scalar_embed_field,
+-        output_dim=module_output_dim,
+-        hidden_layers_depth=two_body_mlp_hidden_layers_depth,
+-        hidden_layers_width=two_body_mlp_hidden_layers_width,
+-        nonlinearity=two_body_mlp_nonlinearity,
+-        forward_weight_init=forward_weight_init,
+-        irreps_in=type_embed.irreps_out,
+-    )
+-
+     return SequentialGraphNetwork(
+         {
+             "bessel_encode": bessel_encode,
+             "type_embed": type_embed,
+-            "twobody_mlp": twobody_mlp,
+         }
+     )
+ 
+@@ -129,8 +104,8 @@ def __init__(
+         self,
+         type_names: Sequence[str],
+         # spline params
+-        num_splines: int = 8,
+-        spline_span: int = 4,
++        num_splines: int = 16,
++        spline_span: int = 12,
+         # model builder params
+         module_output_dim: int = 64,
+         forward_weight_init: bool = True,
+diff --git a/configs/tutorial.yaml b/configs/tutorial.yaml
+index 9487538..cb4fa61 100644
+--- a/configs/tutorial.yaml
++++ b/configs/tutorial.yaml
+@@ -37,6 +37,12 @@ trainer:
+       dirpath: ${hydra:runtime.output_dir}
+       save_last: true
+ 
++
++# NOTE:
++# interpolation parameters for Allegro model
++num_scalar_features: 64
++
++
+ training_module:
+   _target_: nequip.train.EMALightningModule
+   loss:
+@@ -54,7 +60,9 @@ training_module:
+   optimizer:
+     _target_: torch.optim.Adam
+     lr: 0.001
++  # ^ IMPORTANT: Allegro models do better with learning rates around 1e-3
+ 
++  # to use the Allegro model in the NequIP framework, the following `model` block has to be changed to be that of Allegro's
+   model:
+     _target_: allegro.model.AllegroModel
+ 
+@@ -64,78 +72,82 @@ training_module:
+     type_names: ${model_type_names}
+     r_max: ${cutoff_radius}
+ 
+-    # == two-body scalar embedding ==
+-    scalar_embed:
+-      # classic option is the Bessel scalar embedding module
++    # === two-body scalar embedding ===
++    radial_chemical_embed:
++      # the defaults for the Bessel embedding module are usually appropriate
+       _target_: allegro.nn.TwoBodyBesselScalarEmbed
+       num_bessels: 8
+       bessel_trainable: false
+       polynomial_cutoff_p: 6
+-      two_body_embedding_dim: 32
+-      two_body_mlp_hidden_layers_depth: 2
+-      two_body_mlp_hidden_layers_width: 64
+-      two_body_mlp_nonlinearity: silu
+ 
+-      # one could also use the spline embedding module with less hyperparameters
+-      # _target_: allegro.nn.TwoBodySplineScalarEmbed
+-      # num_splines: 8
+-      # spline_span: 3
++    # output dimension of the radial-chemical embedding
++    radial_chemical_embed_dim: ${num_scalar_features}
++
++    # scalar embedding MLP
++    scalar_embed_mlp_hidden_layers_depth: 1
++    scalar_embed_mlp_hidden_layers_width: ${num_scalar_features}
++    scalar_embed_mlp_nonlinearity: silu
+ 
+-    # one could explicitly specify the initial scalar embedding's output dimension
+-    # if `scalar_embed_output_dim` is not provided (or `null`), Allegro will use `num_scalar_features` in its place
+-    # scalar_embed_output_dim: 256
++    # === core hyperparameters ===
++    # The following hyperparameters are the main ones that one should focus on tuning.
+ 
+-    # == symmetry ==
+     # maximum order l to use in spherical harmonics embedding, 1 is baseline (fast), 2 is more accurate, but slower, 3 highly accurate but slow
+     l_max: 1
+-    # whether to include parity symmetry equivariance
+-    # allowed: o3_full, o3_restricted, so3
+-    parity_setting: o3_full   
+ 
+-    # == allegro layers ==
+     # number of tensor product layers, 1-3 usually best, more is more accurate but slower
+     num_layers: 2
+ 
+     # number of scalar features, more is more accurate but slower
+-    # powers of two (4, 8, 16, 64, 128, 256, 512, ...) are good options to try depending on data set
+-    num_scalar_features: 64
++    # 16, 32, 64, 128, 256 are good options to try depending on the dataset
++    num_scalar_features: ${num_scalar_features}
+ 
+     # number of tensor features, more is more accurate but slower
+-    # powers of two (4, 8, 16, 64, 128, ...) are good options to try depending on data set
++    # 8, 16, 32, 64 are good options to try depending on the dataset
+     num_tensor_features: 32
+ 
+-    # whether the tensor product weights couple the paths and channels or not (otherwise the weights are only applied per-path)
+-    # default is `true`, which is expected to be more expressive than `false`
+-    tp_path_channel_coupling: false
+-
++    # == allegro MLPs ==
+     # neural network parameters in the Allegro layers
+-    allegro_mlp_hidden_layers_depth: 2
+-    allegro_mlp_hidden_layers_width: 128
++    allegro_mlp_hidden_layers_depth: 1
++    allegro_mlp_hidden_layers_width: ${num_scalar_features}
+     allegro_mlp_nonlinearity: silu
+     # ^ setting `nonlinearity` to `null` means that the Allegro MLPs are effectively linear layers
+ 
+-    # == readout ==
++    # === advanced hyperparameters ===
++    # The following hyperparameters should remain in their default states until the above core hyperparameters have been set.
++
++    # whether to include features with odd mirror parity
++    # often turning parity off gives equally good results but faster networks, so do consider this
++    parity: true
++
++    # whether the tensor product weights couple the paths and channels or not (otherwise the weights are only applied per-path)
++    # default is `true`, which is expected to be more expressive than `false`
++    tp_path_channel_coupling: true
++
++    # == readout MLP ==
+     # neural network parameters in the readout layer
+     readout_mlp_hidden_layers_depth: 1
+-    readout_mlp_hidden_layers_width: 32
+-    readout_mlp_nonlinearity: null
++    readout_mlp_hidden_layers_width: ${num_scalar_features}
++    readout_mlp_nonlinearity: silu
+     # ^ setting `nonlinearity` to `null` means that output MLP is effectively a linear layer
+ 
++    # === misc hyperparameters ===
+     # average number of neighbors for edge sum normalization
+     avg_num_neighbors: ${training_data_stats:num_neighbors_mean}
+ 
+-    # == per-type per-atom scales and shifts ==
++    # per-type per-atom scales and shifts
+     per_type_energy_shifts: ${training_data_stats:per_atom_energy_mean}
+     per_type_energy_scales: ${training_data_stats:forces_rms}
+     per_type_energy_scales_trainable: false
+     per_type_energy_shifts_trainable: false
+ 
+-    # == ZBL pair potential ==
++    # ZBL pair potential (optional, can be removed or included depending on aplication)
++    # see NequIP docs for details:
++    # https://nequip.readthedocs.io/en/latest/api/nn.html#nequip.nn.pair_potential.ZBL
+     pair_potential:
+       _target_: nequip.nn.pair_potential.ZBL
+       units: real     # Ang and kcal/mol, LAMMPS unit names;  allowed values "metal" and "real"
+       chemical_species: ${chemical_symbols}   # must tell ZBL the chemical species of the various model atom types
+ 
+-# global options
++
+ global_options:
+   allow_tf32: false
+diff --git a/docs/allegro_arch.png b/docs/allegro_arch.png
+new file mode 100644
+index 0000000..1ce4560
+Binary files /dev/null and b/docs/allegro_arch.png differ
+diff --git a/docs/guide/allegro_model.rst b/docs/guide/allegro_model.rst
+new file mode 100644
+index 0000000..9fb7b80
+--- /dev/null
++++ b/docs/guide/allegro_model.rst
+@@ -0,0 +1,31 @@
++Allegro Model
++=============
++
++.. image:: ../allegro_arch.png
++  :width: 1600
++
++
++Allegro hyperparameters
++-----------------------
++The core hyperparameters of the Allegro model include
++ - ``r_max`` is the cutoff radius used for the strictly local Allegro model.
++ - ``l_max`` governs the angular resolution of the tensor features. Reasonable ``l_max`` values to try include ``1``, ``2``, and ``3``, where raising ``l_max`` may improve accuracy at the cost of speed. **NOTE** that the computational cost does not increase linearly with ``l_max``, but rather scales polynomially due to the :math:`O(\ell_\text{max}^6)` scaling of the Clebsch-Gordan tensor products. Raising ``l_max`` will also increase the number of tensor paths taken, and the growth of paths is also tied to the choice of ``num_layers``.
++ - ``num_layers`` is the number of Allegro layers, which corresponds to the body-ordering (``num_layers=1`` corresponds to three-body tensor features, ``num_layers=2`` corresponds to four-body tensor features, and so on). A Clebsch-Gordan tensor product occurs at each Allegro layer. It is usually appropriate to use 1, 2, or 3 layers.
++ - ``num_scalar_features`` and ``num_tensor_features`` correspond to the number of scalar track channels and tensor track channels repsectively. They are separate parameters to set in the Allegro model because of its two-track system. It is often useful to keep ``num_tensor_features`` small and try to raise ``num_scalar_features`` to improve the learning capacity of the model. For ``num_scalar_features``, 16, 32, 64, 128, 256 are good options to try depending on the dataset. For ``num_tensor_features``, 8, 16, 32, 64 are good options to try depending on the dataset.
++ - Each Allegro layer contains a neural network or multilayer perceptron (MLP). These are governed by the ``allegro_mlp`` parameters. ``allegro_mlp_hidden_layers_depth`` is the depth and is defaulted to ``1``. One could try reducing it to ``0`` (making the MLP a linear layer), or raising it to ``2`` or ``3`` (it is unhelpful to go beyond ``3``). ``allegro_mlp_hidden_layers_width`` is the width and can be defaulted to a value that is a multiple of 16 or 32 (for performance) and larger than ``num_scalar_features`` (maybe 2 to 4 times as large to start). ``allegro_mlp_nonlinearity`` is ``silu`` by default (which is recommended).
++
++The above core hyperparameters are the most important to set correctly for most use cases. The following are some advanced hyperparameters that can be tuned, but is discouraged unless one is comfortable with the process of hyperparameter tuning.
++ - The initial scalar embedding has some level of configurability. For ``radial_chemical_embed``, refer to the ``TwoBodyBesselScalarEmbed`` below as a starting point (it's usually fine to just use the defaults). The output features of the radial-chemical embedding module is then put through a scalar embedding MLP. ``radial_chemical_embed_dim`` is the dimensionality of the feature vector output by the radial-chemical module, that is used as input to the scalar embedding MLP. It is typical to make ``radial_chemical_embed_dim`` default to ``num_scalar_features``, but it can be tuned to other values. ``scalar_embed_mlp_hidden_layers_depth`` is defaulted to ``1``. ``scalar_embed_mlp_hidden_layers_width`` can also be defaulted to ``num_scalar_features``, and tuned as desired. ``scalar_embed_mlp_nonlinearity`` is defaulted to ``silu``.
++ - ``parity`` determines whether to use the full set of allowed irreps (i.e. the default behavior of ``true``), or to use a set restricted to spherical harmonic irreps (i.e. the ``false`` option).
++ - ``tp_path_channel_coupling`` determines whether the tensor product weights couple paths and channels or not. The default of ``true`` is expected to be more expressive.
++ - After all the Allegro layers comes the readout MLP to energy predictions. These are governed by the ``readout_mlp`` parameters. The following default behavior is recommended as a starting point, but can be tuned as desired. ``readout_mlp_hidden_layers_depth`` is defaulted to ``1``. ``readout_mlp_hidden_layers_width`` can be defaulted to ``num_scalar_features``. ``readout_mlp_nonlinearity`` is defaulted to ``silu``.
++
++
++API
++---
++
++.. autofunction:: allegro.model.AllegroModel
++
++.. autofunction:: allegro.nn.TwoBodyBesselScalarEmbed
++
++.. autoclass:: allegro.nn.TwoBodySplineScalarEmbed
+\ No newline at end of file
+diff --git a/docs/guide/api.rst b/docs/guide/api.rst
+deleted file mode 100644
+index 47066ba..0000000
+--- a/docs/guide/api.rst
++++ /dev/null
+@@ -1,15 +0,0 @@
+-Python API
+-==========
+-
+-Allegro Model
+--------------
+-
+-.. autofunction:: allegro.model.AllegroModel
+-
+-
+-Two-Body Scalar Embedding Modules
+----------------------------------
+-
+-.. autofunction:: allegro.nn.TwoBodyBesselScalarEmbed
+-
+-.. autoclass:: allegro.nn.TwoBodySplineScalarEmbed
+\ No newline at end of file
+diff --git a/docs/guide/guide.rst b/docs/guide/guide.rst
+index 5ebe61e..abaaaee 100644
+--- a/docs/guide/guide.rst
++++ b/docs/guide/guide.rst
+@@ -7,5 +7,5 @@ The Python API is relevant to learning about the hyperparameters of the Allegro
+ 
+  .. toctree::
+ 
+-    api
++    allegro_model
+     lammps
+\ No newline at end of file
+diff --git a/tests/model/test_allegro.py b/tests/model/test_allegro.py
+index 3a597d5..3264192 100644
+--- a/tests/model/test_allegro.py
++++ b/tests/model/test_allegro.py
+@@ -8,6 +8,9 @@
+     "type_names": ["H", "C", "O"],
+     "r_max": 4.0,
+     "avg_num_neighbors": 5.0,  # very approximate to keep numerics sane
++    "radial_chemical_embed_dim": 8,
++    "scalar_embed_mlp_hidden_layers_depth": 1,
++    "scalar_embed_mlp_hidden_layers_width": 32,
+     "num_layers": 2,
+     "l_max": 2,
+     "num_scalar_features": 32,
+@@ -30,9 +33,6 @@
+ BESSEL_CONFIG = {
+     "_target_": "allegro.nn.TwoBodyBesselScalarEmbed",
+     "num_bessels": 4,
+-    "two_body_embedding_dim": 8,
+-    "two_body_mlp_hidden_layers_depth": 1,
+-    "two_body_mlp_hidden_layers_width": 32,
+ }
+ 
+ SPLINE_CONFIG = {
+@@ -54,13 +54,12 @@ def strict_locality(self):
+     def scalar_embed_config(self, request):
+         return request.param
+ 
+-    # TODO: test so3 mode when can pass down option to assert equivariance to ignore parity
+     @pytest.fixture(
+-        # only test `o3_full` case to save time
+-        params=["o3_full"],  # "o3_restricted"
++        # only test True case to save time
++        params=[True],  # False
+         scope="class",
+     )
+-    def parity_setting(self, request):
++    def parity(self, request):
+         return request.param
+ 
+     @pytest.fixture(
+@@ -97,15 +96,15 @@ def config(
+         self,
+         request,
+         scalar_embed_config,
+-        parity_setting,
++        parity,
+         scatter_features,
+         tp_path_channel_coupling,
+         forward_normalize,
+     ):
+         config = request.param
+         config = config.copy()
+-        config.update({"scalar_embed": scalar_embed_config})
+-        config.update({"parity_setting": parity_setting})
++        config.update({"radial_chemical_embed": scalar_embed_config})
++        config.update({"parity": parity})
+         config.update({"scatter_features": scatter_features})
+         config.update({"tp_path_channel_coupling": tp_path_channel_coupling})
+         config.update({"forward_normalize": forward_normalize})

@@ -1,0 +1,167 @@
+diff --git a/.github/workflows/devel.yaml b/.github/workflows/devel.yaml
+index 2f7cd59b5..c5e82fbee 100644
+--- a/.github/workflows/devel.yaml
++++ b/.github/workflows/devel.yaml
+@@ -13,7 +13,7 @@ jobs:
+       max-parallel: 9
+       fail-fast: false
+       matrix:
+-        python-version: ["3.10", "3.11", "3.12"]
++        python-version: ["3.12", "3.13", "3.14"]
+         platform:
+           - { name: "windows", os: "windows-latest", shell: "bash -l {0}" }
+           - { name: "linux", os: "ubuntu-latest", shell: "bash -l {0}" }
+@@ -23,14 +23,14 @@ jobs:
+           # but Linux
+           - platform:
+               { name: "macos", os: "macos-latest", shell: "bash -l {0}" }
+-            python-version: "3.10"
++            python-version: "3.12"
+           - platform:
+               { name: "macos", os: "macos-latest", shell: "bash -l {0}" }
+-            python-version: "3.11"
++            python-version: "3.13"
+           - platform: { name: "windows", os: "windows-latest", shell: "bash -l {0}" }
+-            python-version: "3.10"
++            python-version: "3.12"
+           - platform: { name: "windows", os: "windows-latest", shell: "bash -l {0}" }
+-            python-version: "3.11"
++            python-version: "3.13"
+     environment:
+       name: biosimspace-build
+     defaults:
+diff --git a/.github/workflows/main.yaml b/.github/workflows/main.yaml
+index 30a515347..467ecd5da 100644
+--- a/.github/workflows/main.yaml
++++ b/.github/workflows/main.yaml
+@@ -16,7 +16,7 @@ jobs:
+       max-parallel: 9
+       fail-fast: false
+       matrix:
+-        python-version: ["3.10", "3.11", "3.12"]
++        python-version: ["3.12", "3.13", "3.14"]
+         platform:
+           - { name: "windows", os: "windows-latest", shell: "bash -l {0}" }
+           - { name: "linux", os: "ubuntu-latest", shell: "bash -l {0}" }
+diff --git a/.github/workflows/pr.yaml b/.github/workflows/pr.yaml
+index 50211e450..72183872f 100644
+--- a/.github/workflows/pr.yaml
++++ b/.github/workflows/pr.yaml
+@@ -12,7 +12,7 @@ jobs:
+       max-parallel: 9
+       fail-fast: false
+       matrix:
+-        python-version: ["3.10", "3.11", "3.12"]
++        python-version: ["3.12", "3.13", "3.14"]
+         platform:
+           - { name: "windows", os: "windows-latest", shell: "bash -l {0}" }
+           - { name: "linux", os: "ubuntu-latest", shell: "bash -l {0}" }
+@@ -22,14 +22,14 @@ jobs:
+           # but Linux
+           - platform:
+               { name: "macos", os: "macos-latest", shell: "bash -l {0}" }
+-            python-version: "3.10"
++            python-version: "3.12"
+           - platform:
+               { name: "macos", os: "macos-latest", shell: "bash -l {0}" }
+-            python-version: "3.11"
++            python-version: "3.13"
+           - platform: { name: "windows", os: "windows-latest", shell: "bash -l {0}" }
+-            python-version: "3.10"
++            python-version: "3.12"
+           - platform: { name: "windows", os: "windows-latest", shell: "bash -l {0}" }
+-            python-version: "3.11"
++            python-version: "3.13"
+     environment:
+       name: biosimspace-build
+     defaults:
+diff --git a/pixi.toml b/pixi.toml
+index 22c35e15e..fa8fcd18a 100644
+--- a/pixi.toml
++++ b/pixi.toml
+@@ -4,7 +4,7 @@ channels = ["conda-forge", "openbiosim/label/dev"]
+ platforms = ["linux-64", "linux-aarch64", "osx-arm64", "win-64"]
+ 
+ [dependencies]
+-python = ">=3.10"
++python = ">=3.12"
+ configargparse = "*"
+ ipywidgets = "*"
+ kcombu_bss = "*"
+@@ -30,7 +30,7 @@ ambertools = ">=22"
+ gromacs = "*"
+ alchemlyb = "*"
+ mdtraj = "*"
+-mdanalysis = "*"
++mdanalysis = ">=2.10.0"
+ 
+ 
+ [target.linux-aarch64.dependencies]
+@@ -48,7 +48,7 @@ sire = "==2026.3.0.dev"
+ ambertools = ">=22"
+ alchemlyb = "*"
+ mdtraj = "*"
+-mdanalysis = "*"
++mdanalysis = ">=2.10.0"
+ 
+ [target.win-64.dependencies]
+ # main
+@@ -57,7 +57,7 @@ mdanalysis = "*"
+ sire = "==2026.3.0.dev"
+ alchemlyb = "*"
+ mdtraj = "*"
+-mdanalysis = "*"
++mdanalysis = ">=2.10.0"
+ 
+ [feature.test.dependencies]
+ pytest = "*"
+diff --git a/pyproject.toml b/pyproject.toml
+index 18782f394..6e7edce77 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -11,7 +11,7 @@ authors = [
+ ]
+ description = "BioSimSpace: Making biomolecular simulation a breeze."
+ readme = "README.rst"
+-requires-python = ">=3.10"
++requires-python = ">=3.12"
+ license = {text = "GPL-3.0-or-later"}
+ dynamic = ["version"]
+ 
+diff --git a/recipes/biosimspace/recipe.yaml b/recipes/biosimspace/recipe.yaml
+index 2682967e5..1ab51be29 100644
+--- a/recipes/biosimspace/recipe.yaml
++++ b/recipes/biosimspace/recipe.yaml
+@@ -26,12 +26,7 @@ requirements:
+     - lomap2
+     - networkx
+     - nglview
+-    - if: match(python, ">=3.11")
+-      then:
+-        - openff-interchange-base >=0.5.0
+-      else:
+-        - openff-interchange-base
+-        - setuptools <82
++    - openff-interchange-base >=0.5.0
+     - openff-toolkit-base
+     - parmed
+     - pyarrow
+@@ -47,7 +42,7 @@ requirements:
+     - if: not aarch64
+       then:
+         - alchemlyb
+-        - mdanalysis
++        - mdanalysis >=2.10.0
+         - mdtraj
+ 
+ tests:
+@@ -68,9 +63,6 @@ tests:
+     requirements:
+       run:
+         - pytest
+-        - if: match(python, "<3.11")
+-          then:
+-            - setuptools <82
+         - if: linux and x86_64
+           then:
+             - ambertools

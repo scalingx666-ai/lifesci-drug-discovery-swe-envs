@@ -1,0 +1,457 @@
+diff --git a/.github/scripts/marketplace/metadata.json b/.github/scripts/marketplace/metadata.json
+index aedeb79d..98b828f0 100644
+--- a/.github/scripts/marketplace/metadata.json
++++ b/.github/scripts/marketplace/metadata.json
+@@ -3468,6 +3468,30 @@
+         "discovery.activity_tags": "configure,deploy,troubleshoot,integrate,generate"
+       }
+     },
++    {
++      "path": "skills/newton-performance",
++      "name": "newton-performance",
++      "description": "Measure or improve the runtime, startup time, memory use, or throughput of a Newton simulation that already behaves correctly, or review a Newton step loop for performance problems such as CUDA graph capture mistakes and host synchronization. Not for setting up simulations, general solver or API questions, debugging unstable or incorrect physics without a performance goal, or optimizing Warp code that does not use Newton.",
++      "metadata": {
++        "product.primary": "Newton Physics Engine",
++        "classification.category.primary": "physical_ai",
++        "catalog.subdomain": "simulation-modeling",
++        "audience": "simulation_engineer,robotics_developer,developer,hpc_developer,application_developer",
++        "discovery.activity_tags": "optimize,profile,benchmark,measure,inspect"
++      }
++    },
++    {
++      "path": "skills/newton-usage",
++      "name": "newton-usage",
++      "description": "Set up, build, or debug physics simulations with the Newton Python package. Use when installing Newton, choosing simulation components, finding examples, or diagnosing simulation and runtime problems.",
++      "metadata": {
++        "product.primary": "Newton Physics Engine",
++        "classification.category.primary": "physical_ai",
++        "catalog.subdomain": "simulation-modeling",
++        "audience": "simulation_engineer,robotics_developer,application_developer,developer",
++        "discovery.activity_tags": "get_started,debug,troubleshoot,configure,select"
++      }
++    },
+     {
+       "path": "skills/nv-generate-ct-rflow",
+       "name": "nv-generate-ct-rflow",
+diff --git a/benchmarks.json b/benchmarks.json
+index 3919b112..491a5d34 100644
+--- a/benchmarks.json
++++ b/benchmarks.json
+@@ -1,8 +1,8 @@
+ {
+   "schema_version": 2,
+   "source": "skills/*/BENCHMARK.md",
+-  "skill_count": 449,
+-  "result_row_count": 4234,
++  "skill_count": 451,
++  "result_row_count": 4254,
+   "skills_without_results": [
+     "deepstream-generate-pipeline",
+     "digital-health-clinical-asr-setup",
+@@ -5529,12 +5529,12 @@
+     },
+     {
+       "skill": "nemo-mbridge-recipe-recommender",
+-      "evaluation_date": "2026-08-05",
++      "evaluation_date": "2026-11-10",
+       "environment": "k8s-sandbox",
+-      "evaluator_version": "1.0.0",
+-      "dataset_digest": "sha256:ef1ce0be1100bdb45047e4131f641cc24d4f26a6a08e1a4f84d519d0b6da62a6",
+-      "validation_status": null,
+-      "tasks": 1,
++      "evaluator_version": "1.6.9",
++      "dataset_digest": "sha256:2d74195284e485e3aa9cd8ea8b6b194ad7a6045dfda3049dcd1511080e3dca16",
++      "validation_status": "passed",
++      "tasks": 2,
+       "attempts_per_task": 1,
+       "pass_threshold_pct": null,
+       "verdict": "PASS",
+@@ -5546,7 +5546,7 @@
+       "catalog_dir": "nemo-mbridge-recipe-recommender",
+       "component": "NeMo MBridge",
+       "has_results": true,
+-      "average_uplift_pct": 56.4
++      "average_uplift_pct": 28.08
+     },
+     {
+       "skill": "nemo-mbridge-resiliency",
+@@ -6052,6 +6052,48 @@
+       "has_results": true,
+       "average_uplift_pct": 28.33
+     },
++    {
++      "skill": "newton-performance",
++      "evaluation_date": "2026-11-11",
++      "environment": "k8s-sandbox",
++      "evaluator_version": "1.6.9",
++      "dataset_digest": "sha256:6ecce6eb8f7b83630e185404459abc12d2a3d0ce0ab5c386ad9dbe1f77ef09f9",
++      "validation_status": "passed",
++      "tasks": 12,
++      "attempts_per_task": 1,
++      "pass_threshold_pct": null,
++      "verdict": "PASS",
++      "agents": [
++        "claude-code",
++        "codex"
++      ],
++      "evaluation_source": null,
++      "catalog_dir": "newton-performance",
++      "component": "Newton",
++      "has_results": true,
++      "average_uplift_pct": 1.05
++    },
++    {
++      "skill": "newton-usage",
++      "evaluation_date": "2026-10-30",
++      "environment": "k8s-sandbox",
++      "evaluator_version": "1.6.4",
++      "dataset_digest": "sha256:f186dac7d2c4e6f63962549401aecd2144324c46da0fee1334c49af5fc19b756",
++      "validation_status": "passed",
++      "tasks": 5,
++      "attempts_per_task": 1,
++      "pass_threshold_pct": null,
++      "verdict": "PASS",
++      "agents": [
++        "claude-code",
++        "codex"
++      ],
++      "evaluation_source": null,
++      "catalog_dir": "newton-usage",
++      "component": "Newton",
++      "has_results": true,
++      "average_uplift_pct": 15.5
++    },
+     {
+       "skill": "nv-generate-ct-rflow",
+       "evaluation_date": "2026-07-08",
+@@ -31600,7 +31642,7 @@
+       "num": null,
+       "agent": "codex",
+       "score_pct": 100.0,
+-      "uplift_pct": 100.0
++      "uplift_pct": 50.0
+     },
+     {
+       "catalog_dir": "nemo-mbridge-recipe-recommender",
+@@ -31608,8 +31650,8 @@
+       "dimension": "Correctness",
+       "num": null,
+       "agent": "claude-code",
+-      "score_pct": 100.0,
+-      "uplift_pct": 100.0
++      "score_pct": 90.0,
++      "uplift_pct": 50.0
+     },
+     {
+       "catalog_dir": "nemo-mbridge-recipe-recommender",
+@@ -31618,7 +31660,7 @@
+       "num": null,
+       "agent": "codex",
+       "score_pct": 100.0,
+-      "uplift_pct": 0.0
++      "uplift_pct": 10.0
+     },
+     {
+       "catalog_dir": "nemo-mbridge-recipe-recommender",
+@@ -31627,7 +31669,7 @@
+       "num": null,
+       "agent": "claude-code",
+       "score_pct": 100.0,
+-      "uplift_pct": 50.0
++      "uplift_pct": null
+     },
+     {
+       "catalog_dir": "nemo-mbridge-recipe-recommender",
+@@ -31635,8 +31677,8 @@
+       "dimension": "Discoverability",
+       "num": null,
+       "agent": "codex",
+-      "score_pct": 94.0,
+-      "uplift_pct": 44.0
++      "score_pct": 95.0,
++      "uplift_pct": null
+     },
+     {
+       "catalog_dir": "nemo-mbridge-recipe-recommender",
+@@ -31644,8 +31686,8 @@
+       "dimension": "Effectiveness",
+       "num": null,
+       "agent": "claude-code",
+-      "score_pct": 98.0,
+-      "uplift_pct": 98.0
++      "score_pct": 68.0,
++      "uplift_pct": 52.1
+     },
+     {
+       "catalog_dir": "nemo-mbridge-recipe-recommender",
+@@ -31653,8 +31695,8 @@
+       "dimension": "Effectiveness",
+       "num": null,
+       "agent": "codex",
+-      "score_pct": 90.0,
+-      "uplift_pct": 39.0
++      "score_pct": 63.0,
++      "uplift_pct": 6.4
+     },
+     {
+       "catalog_dir": "nemo-mbridge-recipe-recommender",
+@@ -31662,8 +31704,8 @@
+       "dimension": "Efficiency",
+       "num": null,
+       "agent": "claude-code",
+-      "score_pct": 100.0,
+-      "uplift_pct": 50.0
++      "score_pct": 64.6,
++      "uplift_pct": null
+     },
+     {
+       "catalog_dir": "nemo-mbridge-recipe-recommender",
+@@ -31671,8 +31713,8 @@
+       "dimension": "Efficiency",
+       "num": null,
+       "agent": "codex",
+-      "score_pct": 100.0,
+-      "uplift_pct": 83.0
++      "score_pct": 66.4,
++      "uplift_pct": null
+     },
+     {
+       "catalog_dir": "nemo-mbridge-resiliency",
+@@ -33744,6 +33786,186 @@
+       "score_pct": 81.3,
+       "uplift_pct": null
+     },
++    {
++      "catalog_dir": "newton-performance",
++      "component": "Newton",
++      "dimension": "Security",
++      "num": null,
++      "agent": "claude-code",
++      "score_pct": 100.0,
++      "uplift_pct": 0.0
++    },
++    {
++      "catalog_dir": "newton-performance",
++      "component": "Newton",
++      "dimension": "Security",
++      "num": null,
++      "agent": "codex",
++      "score_pct": 100.0,
++      "uplift_pct": 0.0
++    },
++    {
++      "catalog_dir": "newton-performance",
++      "component": "Newton",
++      "dimension": "Correctness",
++      "num": null,
++      "agent": "claude-code",
++      "score_pct": 91.7,
++      "uplift_pct": 3.4
++    },
++    {
++      "catalog_dir": "newton-performance",
++      "component": "Newton",
++      "dimension": "Correctness",
++      "num": null,
++      "agent": "codex",
++      "score_pct": 98.3,
++      "uplift_pct": 5.0
++    },
++    {
++      "catalog_dir": "newton-performance",
++      "component": "Newton",
++      "dimension": "Discoverability",
++      "num": null,
++      "agent": "claude-code",
++      "score_pct": 65.5,
++      "uplift_pct": null
++    },
++    {
++      "catalog_dir": "newton-performance",
++      "component": "Newton",
++      "dimension": "Discoverability",
++      "num": null,
++      "agent": "codex",
++      "score_pct": 74.6,
++      "uplift_pct": null
++    },
++    {
++      "catalog_dir": "newton-performance",
++      "component": "Newton",
++      "dimension": "Effectiveness",
++      "num": null,
++      "agent": "claude-code",
++      "score_pct": 83.8,
++      "uplift_pct": -3.7
++    },
++    {
++      "catalog_dir": "newton-performance",
++      "component": "Newton",
++      "dimension": "Effectiveness",
++      "num": null,
++      "agent": "codex",
++      "score_pct": 95.8,
++      "uplift_pct": 1.6
++    },
++    {
++      "catalog_dir": "newton-performance",
++      "component": "Newton",
++      "dimension": "Efficiency",
++      "num": null,
++      "agent": "claude-code",
++      "score_pct": 95.5,
++      "uplift_pct": null
++    },
++    {
++      "catalog_dir": "newton-performance",
++      "component": "Newton",
++      "dimension": "Efficiency",
++      "num": null,
++      "agent": "codex",
++      "score_pct": 54.9,
++      "uplift_pct": null
++    },
++    {
++      "catalog_dir": "newton-usage",
++      "component": "Newton",
++      "dimension": "Security",
++      "num": null,
++      "agent": "claude-code",
++      "score_pct": 100.0,
++      "uplift_pct": 0.0
++    },
++    {
++      "catalog_dir": "newton-usage",
++      "component": "Newton",
++      "dimension": "Security",
++      "num": null,
++      "agent": "codex",
++      "score_pct": 100.0,
++      "uplift_pct": 0.0
++    },
++    {
++      "catalog_dir": "newton-usage",
++      "component": "Newton",
++      "dimension": "Correctness",
++      "num": null,
++      "agent": "claude-code",
++      "score_pct": 92.0,
++      "uplift_pct": 12.0
++    },
++    {
++      "catalog_dir": "newton-usage",
++      "component": "Newton",
++      "dimension": "Correctness",
++      "num": null,
++      "agent": "codex",
++      "score_pct": 100.0,
++      "uplift_pct": 20.0
++    },
++    {
++      "catalog_dir": "newton-usage",
++      "component": "Newton",
++      "dimension": "Discoverability",
++      "num": null,
++      "agent": "claude-code",
++      "score_pct": 100.0,
++      "uplift_pct": null
++    },
++    {
++      "catalog_dir": "newton-usage",
++      "component": "Newton",
++      "dimension": "Discoverability",
++      "num": null,
++      "agent": "codex",
++      "score_pct": 93.3,
++      "uplift_pct": null
++    },
++    {
++      "catalog_dir": "newton-usage",
++      "component": "Newton",
++      "dimension": "Effectiveness",
++      "num": null,
++      "agent": "claude-code",
++      "score_pct": 97.5,
++      "uplift_pct": 31.5
++    },
++    {
++      "catalog_dir": "newton-usage",
++      "component": "Newton",
++      "dimension": "Effectiveness",
++      "num": null,
++      "agent": "codex",
++      "score_pct": 87.5,
++      "uplift_pct": 29.5
++    },
++    {
++      "catalog_dir": "newton-usage",
++      "component": "Newton",
++      "dimension": "Efficiency",
++      "num": null,
++      "agent": "claude-code",
++      "score_pct": 99.2,
++      "uplift_pct": null
++    },
++    {
++      "catalog_dir": "newton-usage",
++      "component": "Newton",
++      "dimension": "Efficiency",
++      "num": null,
++      "agent": "codex",
++      "score_pct": 68.8,
++      "uplift_pct": null
++    },
+     {
+       "catalog_dir": "nv-generate-ct-rflow",
+       "component": "Medical AI Skills",
+diff --git a/skills.sh.json b/skills.sh.json
+index 1e12d039..fad9bce0 100644
+--- a/skills.sh.json
++++ b/skills.sh.json
+@@ -231,6 +231,8 @@
+         "earth2studio-deterministic-forecast",
+         "earth2studio-discover",
+         "earth2studio-install",
++        "newton-performance",
++        "newton-usage",
+         "nvalchemi-toolkit",
+         "physicsnemo-discover",
+         "physicsnemo-shard-tensor",
+diff --git a/versions.json b/versions.json
+index 19b8408b..1a4e2450 100644
+--- a/versions.json
++++ b/versions.json
+@@ -1852,9 +1852,9 @@
+     {
+       "name": "nemo-mbridge-recipe-recommender",
+       "path": "skills/nemo-mbridge-recipe-recommender",
+-      "content_digest": "sha256:676698981fc1794a8fea678042f5c7d129fc3ed555ef388ae2ff3937e474424d",
+-      "last_commit": "eeeff9d8436e757a650bd20e19ae5ef99a177f70",
+-      "last_modified": "2026-08-11"
++      "content_digest": "sha256:5625d04b0ff57f8e7a2d252d1f8f3ed89f68b57065e38578a4ae7020c06900d8",
++      "last_commit": "0b2dec8611c67ae09d9cdbe7c83826fa3fd42f80",
++      "last_modified": "2026-11-12"
+     },
+     {
+       "name": "nemo-mbridge-resiliency",
+@@ -2024,6 +2024,20 @@
+       "last_commit": "4ec84730fd5edd8a6e3c134e751589c61c1d1257",
+       "last_modified": "2026-10-29"
+     },
++    {
++      "name": "newton-performance",
++      "path": "skills/newton-performance",
++      "content_digest": "sha256:f2cb44f424c5b190c3f70a1f85f65ed567513fe53539bc6b704d73924ee7040a",
++      "last_commit": "858abfaeefb6a0a30dc94614355b53ccc94c9116",
++      "last_modified": "2026-11-12"
++    },
++    {
++      "name": "newton-usage",
++      "path": "skills/newton-usage",
++      "content_digest": "sha256:4b3f7ccd2c23b013f7f9b7052204f5dd7fcf602e9b668c72e96935619a9a872d",
++      "last_commit": "858abfaeefb6a0a30dc94614355b53ccc94c9116",
++      "last_modified": "2026-11-12"
++    },
+     {
+       "name": "nv-generate-ct-rflow",
+       "path": "skills/nv-generate-ct-rflow",

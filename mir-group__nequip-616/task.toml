@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/mir-group__nequip-616"
+description = "Document XYZFileWriter chemical_symbols argument"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "nequip",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "mir-group/nequip"
+ref = "d818c7a806a621204f8fd53cff237fc9233d2bcd"
+reference = "https://github.com/mir-group/nequip/pull/616"
+source_access = "auto"
+built_at = "2026-11-14T05:53:07.098378+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:79d2643bf1690df0352ae80abdfe16c7806b951196ff39b7bee63581bcc1651a"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-30T23:10:05Z"
+diff_format = "unified"
+context_files = [
+    "nequip/train/callbacks/write_xyz.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 18
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

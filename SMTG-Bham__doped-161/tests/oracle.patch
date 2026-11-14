@@ -1,0 +1,1601 @@
+diff --git a/docs/Adding_Calculators.rst b/docs/Adding_Calculators.rst
+index 95de4c0bd..6f8b50e23 100644
+--- a/docs/Adding_Calculators.rst
++++ b/docs/Adding_Calculators.rst
+@@ -110,16 +110,25 @@ reference backend):
+   the corresponding ``PLANAR_POTENTIALS_FILE`` / ``SITE_POTENTIALS_FILE``
+   file-name constants): lazy loading of charge-correction data, when not
+   parsed up-front into ``CalculationOutputs``.
+-- ``check_run_compatibility(defect_outputs, bulk_outputs, warn)`` (and
+-  ``MISMATCH_WARNING_SPECS``): defect/bulk calculation settings
+-  compatibility checks, populating ``"run_metadata"`` (and any
+-  ``"mismatching_..."`` entries) in ``DefectEntry.calculation_metadata``.
+-- ``check_entry_compatibility(entries, template_candidates)``: the same
+-  check for competing phase entries, comparing each against a reference
+-  (template) entry and warning about mismatched calculation settings, for
+-  :class:`~doped.chemical_potentials.CompetingPhasesAnalyzer` (with
+-  ``check_compatibility=True``, the default). Entries lacking the relevant
+-  settings data are skipped.
++- ``compare_calculation_settings(settings, reference_settings, competing_phases, warn)``
++  (and ``MISMATCH_WARNING_SPECS``): calculation settings compatibility checks,
++  comparing the energy-affecting settings of a calculation to a reference and returning
++  ``{"mismatching_...": mismatches or False}``. ``settings`` are
++  ``CalculationOutputs.run_metadata`` for defect/bulk supercells and ``entry.data``
++  for competing phases (with ``competing_phases=True``, for settings which can
++  legitimately differ between phases, such as k-point meshes).
++  ``MISMATCH_WARNING_SPECS`` gives, for each ``"mismatching_..."`` key, the settings
++  name (``"object_name"``), the settings ``"data_key"`` (used to choose the reference
++  competing phase and skip entries lacking the settings data), the ``"format"`` and
++  ``"closing"`` warning lines, the prefix of any per-defect warnings
++  (``"per_defect_warning_prefix"``) and optional ``"transform"``/``"body"``
++  functions, from which ``doped`` generates grouped mismatch warnings for
++  defects and competing phases (the latter with |CompetingPhasesAnalyzer| with
++  ``check_compatibility=True``, the default).
++- ``check_run_compatibility(defect_outputs, bulk_outputs, warn)``: defect/bulk
++  calculation settings compatibility checks (using ``compare_calculation_settings``),
++  populating ``"run_metadata"`` (and the ``"mismatching_..."`` entries) in
++  ``DefectEntry.calculation_metadata``.
+ - ``load_eigenvalue_outputs(path, outputs, projections, label, run_metadata)``:
+   loading of outputs `with orbital projections` for eigenvalue / band-edge
+   analysis (``DefectEntry.get_eigenvalue_analysis()``), when not parsed
+@@ -143,6 +152,11 @@ reference backend):
+   ``"folder"`` (the parsed calculation folder). Without this,
+   ``CompetingPhasesAnalyzer`` can still be initialised directly from a list
+   of ``ComputedEntry``/``ComputedStructureEntry`` objects.
++- ``find_calc_output(directory) -> str``: selection of the calculation output
++  file to parse in a competing phase directory (e.g. with the filename
++  priorities used for defect parsing), for ``CompetingPhasesAnalyzer``. If not
++  implemented, or raising ``FileNotFoundError``/``ValueError`` (no or ambiguous
++  files), the generic ``CALC_OUTPUT_MASK[0]`` filename matching is used.
+ 
+ The generic calculation-file discovery helpers in ``doped.io.utils``
+ (e.g. ``_find_calc_outputs``, ``_determine_subfolder``) are parameterised by
+diff --git a/docs/GPAW_Support.rst b/docs/GPAW_Support.rst
+index ebb56a758..095f3f2ef 100644
+--- a/docs/GPAW_Support.rst
++++ b/docs/GPAW_Support.rst
+@@ -165,32 +165,33 @@ been applied):
+ Chemical potentials and formation energies
+ ------------------------------------------
+ 
+-Competing-phase calculations must use energies that are consistent with the
+-GPAW settings used for the bulk and defects. Individual outputs can be converted
+-to ``pymatgen`` computed entries and used to determine the chemical-potential
+-limits:
++GPAW competing-phase outputs can be parsed directly with
++``CompetingPhasesAnalyzer(..., calculator="gpaw")``:
+ 
+ .. code-block:: python
+ 
+-   from doped.chemical_potentials import get_doped_chempots_from_entries
+-   from doped.io import get_calculation_outputs
++   from doped.chemical_potentials import CompetingPhasesAnalyzer
+    from doped.thermodynamics import DefectThermodynamics
+ 
+-   bulk_entry = get_calculation_outputs("MgO_bulk", calculator="gpaw").get_computed_entry()
+-
+-   # phase_entries should contain consistently calculated elemental and
+-   # competing-phase entries.
+-   chempots = get_doped_chempots_from_entries(
+-       [bulk_entry, *phase_entries],
+-       bulk_entry,
++   phase_analyzer = CompetingPhasesAnalyzer(
++       "MgO",
++       entries="CompetingPhases_GPAW",
++       calculator="gpaw",
+    )
+-   defect_thermodynamics = DefectThermodynamics(defect_dict, chempots=chempots)
++   defect_thermodynamics = DefectThermodynamics(defect_dict, chempots=phase_analyzer.chempots)
+    defect_thermodynamics.plot(limit="Mg-rich")
+    defect_thermodynamics.plot(limit="O-rich")
+ 
+-The complete MgO example prepares Mg structures obtained from the
+-|CompetingPhases| workflow and an isolated triplet O2 reference, then generates
+-Mg-rich and O-rich formation-energy diagrams.
++The parser reads the stored structures, total energies and GPAW parameters, and
++warns if the functional, PAW datasets, basis set or mode (e.g. plane-wave
++cutoff) differ between competing phases (while k-point and real-space meshes
++can differ). Ensure energies use consistent functionals, PAW datasets, basis
++sets and cutoffs with the bulk and defects. Competing-phase input generation
++with GPAW is not yet implemented (TODO).
++
++The complete MgO example prepares a primitive-cell MgO host calculation, Mg
++structures obtained from the |CompetingPhases| workflow and an isolated triplet
++O2 reference, then generates Mg-rich and O-rich formation-energy diagrams.
+ 
+ Anisotropic and two-dimensional systems
+ ---------------------------------------
+diff --git a/doped/chemical_potentials.py b/doped/chemical_potentials.py
+index 88c88e888..9c229bc76 100644
+--- a/doped/chemical_potentials.py
++++ b/doped/chemical_potentials.py
+@@ -2883,8 +2883,9 @@ def __init__(
+                 multiprocessing.
+             check_compatibility (bool):
+                 Whether to check the compatibility of the parsed entries,
+-                by comparing their ``INCAR`` and ``POTCAR`` settings (if
+-                available). Default is ``True``.
++                by comparing their calculation settings (e.g. ``INCAR`` tags
++                and ``POTCAR`` symbols with VASP), if available. Default is
++                ``True``.
+             calculator (str):
+                 Name of the calculator used for the competing phase
+                 calculations (matching a ``doped.io.<calculator>`` parsing
+@@ -2995,8 +2996,8 @@ def _from_entries(
+                 potential limits.
+             check_compatibility (bool):
+                 Whether to check the compatibility of the parsed entries,
+-                by comparing their ``INCAR`` and ``POTCAR`` settings.
+-                Default is ``True``.
++                by comparing their calculation settings (e.g. ``INCAR`` tags
++                and ``POTCAR`` symbols with VASP). Default is ``True``.
+         """
+         self.entries = entries
+         intrinsic_entries: list[ComputedEntry | ComputedStructureEntry] = []
+@@ -3079,10 +3080,9 @@ def _entry_contains_missing_elemental_ref(
+         # check entry compatibilities (calculation settings), with the calculator backend (if it
+         # implements this check); taking the first of bulk entry, bulk comp entries, intrinsic, all
+         # entries `with` the relevant settings data as the reference (template) entry:
+-        if check_compatibility and (
+-            check_entry_compatibility := getattr(self._backend, "check_entry_compatibility", None)
+-        ):
+-            check_entry_compatibility(
++        if check_compatibility:
++            _check_entry_compatibility(
++                self._backend,
+                 entries,
+                 template_candidates=[self.bulk_entry, *bulk_comp_entries, *intrinsic_entries, *entries],
+             )
+@@ -3195,8 +3195,8 @@ def _from_calc_outputs(
+         discovered ``vasprun.xml(.gz)`` files are parsed.
+ 
+         If ``path`` is a list, each element may be a direct path to a
+-        ``vasprun.xml(.gz)`` file **or** to a directory containing one,
+-        which will be located via a recursive search.
++        ``vasprun.xml(.gz)`` file **or** to the directory directly containing
++        one (i.e. not searched recursively).
+ 
+         Args:
+             path (PathLike or list):
+@@ -3221,8 +3221,8 @@ def _from_calc_outputs(
+                 multiprocessing.
+             check_compatibility (bool):
+                 Whether to check the compatibility of the parsed entries,
+-                by comparing their ``INCAR`` and ``POTCAR`` settings.
+-                Default is ``True``.
++                by comparing their calculation settings (e.g. ``INCAR`` tags
++                and ``POTCAR`` symbols with VASP). Default is ``True``.
+         """
+         output_file = self._backend.CALC_OUTPUT_MASK[0]  # e.g. "vasprun.xml" with VASP
+         if isinstance(path, list):
+@@ -3405,6 +3405,10 @@ def _find_calc_output_in_directory(self, directory: PathLike) -> str | None:
+             calc_output_path, multiple = _io_utils._get_output_files_and_check_if_multiple(
+                 output_file, str(directory)
+             )
++        # optional backend file selection (e.g. GPAW filename priority, matching defect parsing):
++        if (find_calc_output := getattr(self._backend, "find_calc_output", None)) is not None:
++            with contextlib.suppress(FileNotFoundError, ValueError):  # none/ambiguous: keep generic pick
++                calc_output_path = find_calc_output(directory)
+         if calc_output_path and os.path.exists(calc_output_path):
+             if multiple:
+                 self._multiple_files_warning(output_file, directory, calc_output_path)
+@@ -3414,12 +3418,9 @@ def _find_calc_output_in_directory(self, directory: PathLike) -> str | None:
+     def _multiple_files_warning(self, output_file, directory, chosen_filepath) -> None:
+         """
+         Warn that multiple calculation output files were found in
+-        ``directory``, using the backend's ``FILE_PARSING_ACTIONS`` for the
+-        (informative) description of what the file is parsed for.
++        ``directory``, describing the competing-phase parsing task.
+         """
+-        action = getattr(self._backend, "FILE_PARSING_ACTIONS", {}).get(
+-            output_file, "parse the calculation energy and metadata."
+-        )
++        action = "parse the competing-phase energy and metadata."
+         _io_utils._multiple_files_warning(
+             output_file, directory, chosen_filepath, action, dir_type="competing phase"
+         )
+@@ -4603,6 +4604,51 @@ def _nudge_labels_inside_axes(ax: plt.Axes, padding: float | None, exclude: set
+         text.set_position(new_position)
+ 
+ 
++def _check_entry_compatibility(
++    backend: ModuleType, entries: list[ComputedEntry], template_candidates: list[ComputedEntry]
++) -> None:
++    r"""
++    Check the calculation settings of the competing phase ``entries`` against
++    those of a reference (template) entry, using the
++    ``compare_calculation_settings()`` function and ``MISMATCH_WARNING_SPECS``
++    of the ``doped.io`` calculator ``backend`` (if implemented); recording any
++    mismatches in ``entry.data`` (under the ``MISMATCH_WARNING_SPECS`` keys)
++    and warning about these collectively.
++
++    For each type of setting, the first entry in ``template_candidates`` with
++    the relevant settings data (``"data_key"`` in ``MISMATCH_WARNING_SPECS``)
++    is used as the reference, and entries without this data (e.g.
++    ``ComputedEntry``\s supplied directly by the user, rather than parsed
++    from calculation outputs) are skipped.
++
++    Args:
++        backend (ModuleType):
++            The ``doped.io`` calculator parsing backend module.
++        entries (list[|ComputedEntry|]):
++            The competing phase entries to check.
++        template_candidates (list[|ComputedEntry|]):
++            Priority-ordered candidate entries from which to take the reference
++            (template) calculation settings.
++    """
++    if (compare := getattr(backend, "compare_calculation_settings", None)) is None:
++        return
++    for mismatch_key, spec in getattr(backend, "MISMATCH_WARNING_SPECS", {}).items():
++        template = next((e for e in template_candidates if e.data.get(spec["data_key"])), None)
++        if template is None:
++            continue
++        for entry in entries:
++            if entry.data.get(spec["data_key"]) and mismatch_key in (
++                mismatches := compare(entry.data, template.data, competing_phases=True)
++            ):
++                entry.data[mismatch_key] = mismatches[mismatch_key]
++        _io_utils._warn_calculation_mismatches(
++            [(entry.name, entry.data) for entry in entries],
++            {mismatch_key: spec},
++            competing_phases=True,
++            reference_name=template.name,
++        )
++
++
+ def _parse_entry_and_catch_exception(
+     calc_output_path: PathLike, calculator: str = "vasp"
+ ) -> tuple[str | ComputedStructureEntry, PathLike, bool, bool]:
+diff --git a/doped/io/gpaw/outputs.py b/doped/io/gpaw/outputs.py
+index b6277636c..378cddd71 100644
+--- a/doped/io/gpaw/outputs.py
++++ b/doped/io/gpaw/outputs.py
+@@ -15,8 +15,6 @@
+   the ``.gpw`` files, but are not yet mapped to ``pymatgen``'s format.
+ - ``get_fermi_dos()``: bulk DOS parsing, for Fermi level / carrier
+   concentration analysis (``FermiSolver``).
+-- ``get_competing_phase_entry()``: competing phase parsing, for chemical
+-  potential analysis (``CompetingPhasesAnalyzer``).
+ - Occupation-based band edges, see
+   :func:`_get_eigenvalue_properties_from_calc`.
+ 
+@@ -30,23 +28,21 @@
+ from typing import Any
+ 
+ import numpy as np
++from pymatgen.core.entries import ComputedStructureEntry
+ from pymatgen.core.structure import Structure
+ from pymatgen.electronic_structure.core import Spin
+ from pymatgen.io.ase import AseAtomsAdaptor
+ from pymatgen.util.typing import PathLike
+ 
++from doped.io import utils as _io_utils
+ from doped.io.outputs import CalculationOutputs
+ 
+-# ``doped`` accesses these two remaining unimplemented protocol names directly (rather than probing
+-# with ``getattr(backend, name, default)``), so they are intercepted here to fail informatively rather
+-# than with an obscure ``AttributeError``. The optional, ``getattr``-probed protocol names
+-# (``SUBFOLDER_PRIORITY``, ``MISMATCH_WARNING_SPECS``, ``check_entry_compatibility``,
++# ``doped`` accesses the remaining unimplemented protocol name directly (rather than probing with
++# ``getattr(backend, name, default)``), so it is intercepted here to fail informatively rather than with an
++# obscure ``AttributeError``. The optional, ``getattr``-probed protocol names (``SUBFOLDER_PRIORITY``,
+ # ``load_eigenvalue_outputs``, ``PLANAR_POTENTIALS_FILE``, ``SITE_POTENTIALS_FILE``) must keep raising
+ # ``AttributeError``, so that those features degrade gracefully as intended:
+-_UNIMPLEMENTED_BACKEND_ATTRS = (
+-    "get_competing_phase_entry",
+-    "get_fermi_dos",
+-)
++_UNIMPLEMENTED_BACKEND_ATTRS = ("get_fermi_dos",)
+ 
+ 
+ def __getattr__(name: str) -> Any:
+@@ -58,11 +54,8 @@ def __getattr__(name: str) -> Any:
+     if name in _UNIMPLEMENTED_BACKEND_ATTRS:
+         raise NotImplementedError(
+             f"`{__name__}.{name}` is not implemented; GPAW support in `doped` is experimental, and "
+-            f"does not yet cover competing phase or bulk DOS parsing. Defect & bulk supercells are "
+-            f'parsed as usual, with `DefectsParser(..., calculator="gpaw")`. For competing phases or '
+-            f"a bulk DOS, build the `pymatgen` `ComputedStructureEntry` / `FermiDos` objects yourself "
+-            f'(e.g. from `get_calculation_outputs(..., calculator="gpaw")`) and pass them to '
+-            f"`CompetingPhasesAnalyzer` / `DefectThermodynamics` directly. See the GPAW tracking issue."
++            f"does not yet cover bulk DOS parsing. For a bulk DOS, build a `pymatgen` `FermiDos` "
++            f"object yourself and pass it to `DefectThermodynamics` directly. See the GPAW tracking issue."
+         )
+     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+ 
+@@ -115,6 +108,51 @@ def _find_gpaw_output(
+     )
+ 
+ 
++@contextlib.contextmanager
++def _open_gpaw_restart(gpw_file: PathLike, **kwargs):
++    """
++    Load a ``GPAW`` calculator from the ``gpw_file`` restart file, as a context
++    manager which closes it and detaches it from its ``Atoms`` on exit.
++
++    Raises a ``ValueError`` if the file holds no stored results (e.g. from an
++    unconverged calculation).
++
++    Args:
++        gpw_file (PathLike):
++            Path to the ``GPAW`` ``.gpw`` restart file.
++        **kwargs:
++            Passed to ``GPAW()`` (e.g. ``txt=None``).
++
++    Yields:
++        GPAW:
++            The ``GPAW`` calculator.
++    """
++    from gpaw import GPAW
++
++    calc = GPAW(gpw_file, **kwargs)
++    try:
++        if calc.calculation_required(calc.atoms, ["energy"]):
++            raise ValueError(
++                f"{gpw_file} holds no stored results (e.g. from an unconverged or unfinished calculation)"
++            )
++        yield calc
++    finally:
++        if hasattr(calc, "close"):  # removed in GPAW >= 26
++            calc.close()
++        if getattr(calc, "atoms", None) is not None:  # break the ``Atoms`` <-> calculator reference
++            calc.atoms.calc = None
++
++
++def _get_gpaw_parameters(calc) -> dict:
++    """
++    Get the parameters of a ``GPAW`` calculator as a ``dict``.
++
++    With GPAW >= 26, these are only the explicitly-set values, while with older
++    versions they also include the defaults.
++    """
++    return calc.parameters.todict() if hasattr(calc.parameters, "todict") else dict(calc.parameters)
++
++
+ def _get_site_potentials_from_calc(calc) -> np.ndarray:
+     """
+     Get the atom-centred electrostatic site potentials from a ``GPAW``
+@@ -149,7 +187,9 @@ def _structure_from_calc(calc) -> Structure:
+     re-attached as a site property.
+ 
+     Args:
+-        calc (GPAW): ``GPAW`` calculator object.
++        calc (Calculator):
++            ``GPAW`` calculator object, or ``ase`` single-point calculator with
++            the results read from a ``.gpw`` file.
+ 
+     Returns:
+         Structure: The calculation structure.
+@@ -211,19 +251,8 @@ def get_gpaw_site_potentials(
+     """
+     Extracts atomic site potentials from a ``GPAW`` ``.gpw`` file.
+     """
+-    from gpaw import GPAW
+-
+-    gpw_file = _find_gpaw_output(gpw_file)
+-    calc = GPAW(gpw_file)
+-    site_potentials = _get_site_potentials_from_calc(calc)
+-
+-    if hasattr(calc, "close"):
+-        calc.close()
+-
+-    if hasattr(calc, "atoms") and calc.atoms:
+-        calc.atoms.calc = None
+-
+-    return site_potentials
++    with _open_gpaw_restart(_find_gpaw_output(gpw_file)) as calc:
++        return _get_site_potentials_from_calc(calc)
+ 
+ 
+ def get_gpaw_planar_averaged_potential(
+@@ -232,16 +261,8 @@ def get_gpaw_planar_averaged_potential(
+     """
+     Extracts planar-averaged potential from a ``GPAW`` ``.gpw`` file.
+     """
+-    from gpaw import GPAW
+-
+-    gpw_file = _find_gpaw_output(gpw_file)
+-    calc = GPAW(gpw_file)
+-    planar_averages = _get_planar_averaged_potential_from_calc(calc)
+-
+-    if hasattr(calc, "close"):
+-        calc.close()
+-
+-    return planar_averages
++    with _open_gpaw_restart(_find_gpaw_output(gpw_file)) as calc:
++        return _get_planar_averaged_potential_from_calc(calc)
+ 
+ 
+ def get_potentials_from_input(
+@@ -298,6 +319,7 @@ def get_potentials_from_input(
+     return potentials_input
+ 
+ 
++find_calc_output = _find_gpaw_output  # used by CompetingPhasesAnalyzer for file selection
+ CALC_OUTPUT_MASK = (".gpw",)
+ """
+ Filename patterns identifying ``GPAW`` calculation output files, used for
+@@ -350,14 +372,9 @@ def get_calculation_outputs(
+     Returns:
+         CalculationOutputs: The parsed calculation outputs.
+     """
+-    from gpaw import GPAW
+-
+     gpw_file = _find_gpaw_output(path, subfolder)
+-    calc = GPAW(gpw_file, txt=None)
+-    try:
+-        parameters = (
+-            calc.parameters.todict() if hasattr(calc.parameters, "todict") else dict(calc.parameters)
+-        )  # retain GPAW<26 compatibility
++    with _open_gpaw_restart(gpw_file, txt=None) as calc:
++        parameters = _get_gpaw_parameters(calc)
+         charge = parameters.get("charge") or 0  # parameters only holds explicitly-set, non-default values
+         band_gap, cbm, vbm, efermi = _get_eigenvalue_properties_from_calc(calc)
+         eigenvalues = {}
+@@ -381,7 +398,7 @@ def get_calculation_outputs(
+             energy=calc.get_potential_energy(),
+             calculator="gpaw",
+             directory=str(path),
+-            converged_electronic=bool(getattr(getattr(calc, "scf", None), "converged", True)),
++            converged_electronic=True,  # (as results-less restarts are rejected by _open_gpaw_restart)
+             # a ``.gpw`` restart file holds the final state only, with no ionic-step history to check:
+             converged_ionic=None,
+             efermi=efermi,
+@@ -402,11 +419,63 @@ def get_calculation_outputs(
+             site_potentials=_get_site_potentials_from_calc(calc),
+             run_metadata={"gpaw_parameters": parameters},
+         )
+-    finally:
+-        if hasattr(calc, "close"):
+-            calc.close()
+-        if getattr(calc, "atoms", None) is not None:
+-            calc.atoms.calc = None
++
++
++def get_competing_phase_entry(path: PathLike) -> ComputedStructureEntry:
++    """
++    Parse a competing-phase calculation for ``CompetingPhasesAnalyzer``,
++    reading the stored structure, energy and calculation parameters, and
++    creating a |ComputedStructureEntry|.
++
++    Args:
++        path (PathLike):
++            Calculation directory or a GPAW ``.gpw`` restart file.
++
++    Returns:
++        ComputedStructureEntry:
++            The uncorrected total energy and structure, with GPAW parameters
++            (as set for the calculation), formula, volume, atom count, source
++            folder, k-point mesh and magnetization in ``entry.data``. Ionic
++            convergence is not reported: restart files have no ionic-step
++            history. Band gaps are omitted pending occupation-based band edges
++            (TODO).
++    """
++    from ase.dft.kpoints import get_monkhorst_pack_size_and_offset
++    from ase.io.gpw import read_gpw
++    from ase.io.ulm import open as ulm_open
++
++    gpw_file = _find_gpaw_output(path)
++    with ulm_open(gpw_file) as reader:  # first, so that non-ULM (e.g. empty) files give a clear error
++        parameters = reader.parameters.asdict()
++    atoms = read_gpw(gpw_file)  # with a ``SinglePointDFTCalculator`` holding the stored results
++    if "energy" not in atoms.calc.results:
++        raise ValueError(
++            f"{gpw_file} holds no stored results (e.g. from an unconverged or unfinished calculation)"
++        )
++
++    structure = _structure_from_calc(atoms.calc)
++    entry = ComputedStructureEntry(structure, atoms.get_potential_energy())  # parameters in ``entry.data``
++    elements = sorted(el.symbol for el in entry.composition.elements)
++    entry.data.update(
++        {
++            "calculator": "gpaw",
++            "gpaw_parameters": parameters,
++            "formula_pretty": entry.composition.reduced_formula,
++            "nsites": len(structure),
++            "volume": structure.volume,
++            "energy_per_atom": entry.energy_per_atom,
++            "elements": elements,
++            "nelements": len(elements),
++            "summary": {"total_magnetization": atoms.calc.get_magnetic_moment()},
++            "folder": str(Path(gpw_file).parent),
++            "converged_electronic": True,  # (as results-less restarts are rejected above)
++        }
++    )
++    with contextlib.suppress(ValueError):  # non-Monkhorst-Pack sampling has no mesh dimensions
++        entry.data["kpoints"] = [
++            get_monkhorst_pack_size_and_offset(atoms.calc.get_bz_k_points())[0].tolist()
++        ]
++    return entry
+ 
+ 
+ _COMPATIBILITY_PARAMETERS = (
+@@ -421,9 +490,10 @@ def get_calculation_outputs(
+     "background_charge",  # explicit jellium (not standard uniform background for charged supercells)
+ )
+ """
+-The ``GPAW`` calculation parameters which must match between the bulk and
+-defect supercell calculations for their energies to be comparable; functional,
+-basis/grid, k-points, PAW datasets and external fields.
++The ``GPAW`` calculation parameters which must match between calculations for
++their energies to be comparable; functional, basis/grid, k-points, PAW datasets
++and external fields (with k-point and real-space meshes only compared for
++defect & bulk supercells, not competing phases).
+ """
+ 
+ 
+@@ -444,6 +514,84 @@ def _comparable(value: Any) -> Any:
+     return value
+ 
+ 
++MISMATCH_WARNING_SPECS = {
++    "mismatching_gpaw_parameters": {
++        "object_name": "GPAW parameters",
++        "data_key": "gpaw_parameters",
++        "per_defect_warning_prefix": "There are mismatching GPAW parameters",
++        "format": "{{parameter: ({name_1} value, {name_2} value)}}):",
++        "closing": (
++            "In general, the same GPAW settings should be used for all final calculations for accurate "
++            "results!"
++        ),
++    },
++}
++"""
++Specifications for collectively warning about mismatching ``GPAW`` calculation
++parameters (see :func:`compare_calculation_settings`), for defect & bulk
++supercell calculations and competing phases.
++"""
++
++
++def compare_calculation_settings(
++    settings: dict,
++    reference_settings: dict,
++    competing_phases: bool = False,
++    warn: bool = False,
++) -> dict[str, Any]:
++    """
++    Compare the energy-affecting ``GPAW`` parameters (``"gpaw_parameters"``) of
++    a calculation to those of a reference calculation.
++
++    The parameters in :data:`_COMPATIBILITY_PARAMETERS` are compared, except
++    for the k-point and real-space meshes (``kpts``, ``h``, ``gpts``) of
++    competing phases, which can differ between phases.
++
++    Used for both defect & bulk supercell calculations (by
++    :func:`check_run_compatibility`, with ``CalculationOutputs.run_metadata``
++    settings) and competing phases (by |CompetingPhasesAnalyzer| when
++    ``check_compatibility=True`` (default), with ``entry.data`` settings).
++
++    Args:
++        settings (dict):
++            The calculation settings, with the ``"gpaw_parameters"`` dict.
++        reference_settings (dict):
++            The settings of the reference calculation (e.g. the bulk
++            supercell).
++        competing_phases (bool):
++            Whether these are competing phase calculations (for which meshes
++            are not compared). Default is ``False``.
++        warn (bool):
++            Whether to warn about any mismatches found. Default is ``False``.
++
++    Returns:
++        dict:
++            ``"mismatching_gpaw_parameters"``: a
++            ``{parameter: (value, reference value)}`` dict, or ``False`` if
++            they match.
++    """
++    parameters, reference = (s.get("gpaw_parameters") or {} for s in [settings, reference_settings])
++    mismatches = {
++        parameter: (parameters.get(parameter), reference.get(parameter))
++        for parameter in _COMPATIBILITY_PARAMETERS
++        if not (competing_phases and parameter in {"kpts", "h", "gpts"})
++        and _comparable(parameters.get(parameter)) != _comparable(reference.get(parameter))
++    }
++    if mismatches and warn:
++        labels = _io_utils._MISMATCH_WARNING_CONTEXTS[competing_phases]  # e.g. "defect" & "bulk"
++        mismatch_info = "\n".join(
++            f"{parameter}: {value!r} ({labels['name_1']}) vs {reference_value!r} ({labels['name_2']})"
++            for parameter, (value, reference_value) in mismatches.items()
++        )
++        warnings.warn(
++            f"There are mismatching GPAW parameters between your {labels['name_2']} and "
++            f"{labels['name_1']} calculations, which may mean your energies are not comparable:\n"
++            f"{mismatch_info}"
++        )
++
++    return {"mismatching_gpaw_parameters": mismatches or False}
++
++
+ def check_run_compatibility(
+     defect_outputs: CalculationOutputs,
+     bulk_outputs: CalculationOutputs,
+@@ -451,45 +599,35 @@ def check_run_compatibility(
+ ) -> dict:
+     """
+     Check that the defect and bulk ``GPAW`` calculations used compatible
+-    settings, and collect their parameters for
+-    ``DefectEntry.calculation_metadata``.
++    settings (with :func:`compare_calculation_settings`), and collect their
++    parameters for ``DefectEntry.calculation_metadata``.
+ 
+-    Only the parameters in :data:`_COMPATIBILITY_PARAMETERS` are compared;
+     ``GPAW``'s full parameter dictionaries are returned either way.
+ 
+     Args:
+-        defect_outputs (CalculationOutputs): The parsed defect supercell outputs.
+-        bulk_outputs (CalculationOutputs): The parsed bulk supercell outputs.
++        defect_outputs (CalculationOutputs):
++            The parsed defect supercell outputs.
++        bulk_outputs (CalculationOutputs):
++            The parsed bulk supercell outputs.
+         warn (bool):
+             Whether to warn about mismatched parameters. Default is ``True``.
+ 
+     Returns:
+-        dict: ``"run_metadata"`` (both parameter sets) and
+-        ``"mismatching_gpaw_parameters"`` (a ``{parameter: (defect, bulk)}``
+-        dict, or ``False`` if they match).
++        dict:
++            ``"run_metadata"`` (both parameter sets) and
++            ``"mismatching_gpaw_parameters"`` (a
++            ``{parameter: (defect, bulk)}`` dict, or ``False`` if they match).
+     """
+     run_metadata = {
+         f"{label}_gpaw_parameters": (outputs.run_metadata or {}).get("gpaw_parameters", {})
+         for label, outputs in (("defect", defect_outputs), ("bulk", bulk_outputs))
+     }
+-    defect_parameters = run_metadata["defect_gpaw_parameters"]
+-    bulk_parameters = run_metadata["bulk_gpaw_parameters"]
+-    mismatches = {
+-        parameter: (defect_parameters.get(parameter), bulk_parameters.get(parameter))
+-        for parameter in _COMPATIBILITY_PARAMETERS
+-        if _comparable(defect_parameters.get(parameter)) != _comparable(bulk_parameters.get(parameter))
++    return {
++        **compare_calculation_settings(
++            defect_outputs.run_metadata or {}, bulk_outputs.run_metadata or {}, warn=warn
++        ),
++        "run_metadata": run_metadata,
+     }
+-    if mismatches and warn:
+-        mismatch_info = "\n".join(
+-            f"{parameter}: {defect!r} (defect) vs {bulk!r} (bulk)"
+-            for parameter, (defect, bulk) in mismatches.items()
+-        )
+-        warnings.warn(
+-            f"There are mismatching GPAW parameters between your bulk and defect calculations, which "
+-            f"may mean your energies are not comparable:\n{mismatch_info}"
+-        )
+-
+-    return {"mismatching_gpaw_parameters": mismatches or False, "run_metadata": run_metadata}
+ 
+ 
+ def get_planar_averaged_potentials(
+diff --git a/doped/io/utils.py b/doped/io/utils.py
+index 4a154ca13..dab2aed92 100644
+--- a/doped/io/utils.py
++++ b/doped/io/utils.py
+@@ -1,10 +1,11 @@
+ """
+-Calculator-agnostic utilities for handling calculation input/output files;
+-currently for locating calculation output files and folders.
++Calculator-agnostic utilities for handling calculation input/output files; for
++locating calculation output files and folders, and warning about mismatching
++calculation settings.
+ 
+ These are generic algorithms parameterised by calculator-specific filename
+-masks and subfolder priority lists, which are supplied by each
+-``doped.io.<calculator>`` backend (see e.g. their usage in
++masks, subfolder priority lists and mismatch warning specifications, which are
++supplied by each ``doped.io.<calculator>`` backend (see e.g. their usage in
+ ``doped.io.vasp.outputs``).
+ """
+ 
+@@ -239,3 +240,68 @@ def _multiple_files_warning(file_type, directory, chosen_filepath, action, dir_t
+         f"Multiple `{file_type}` files found in {dir_type} directory: {directory}. Using {filename} to "
+         f"{action}"
+     )
++
++
++_MISMATCH_WARNING_CONTEXTS: dict[bool, dict[str, str]] = {
++    False: {  # defect & bulk supercell calculations
++        "calculations": "defect and bulk",
++        "results": "energies",
++        "name_1": "defect",
++        "name_2": "bulk",
++        "names": "Defects",
++    },
++    True: {  # competing phase calculations, compared to a reference (template) entry
++        "calculations": "competing phases",
++        "results": "energies & thus chemical potential limits",
++        "name_1": "entry",
++        "name_2": "reference",
++        "names": "Entries",
++    },
++}
++
++
++def _warn_calculation_mismatches(
++    named_metadata: Iterable[tuple[str, dict]],
++    mismatch_warning_specs: dict[str, dict],
++    competing_phases: bool = False,
++    reference_name: str | None = None,
++) -> None:
++    """
++    Collectively warn about mismatching calculation settings, as stored under
++    the ``mismatch_warning_specs`` keys in the ``(name, metadata)`` pairs of
++    ``named_metadata``; ``DefectEntry.calculation_metadata`` for defect & bulk
++    supercell calculations, or ``entry.data`` for competing phases (compared to
++    the ``reference_name`` entry).
++
++    ``mismatch_warning_specs`` is the calculator backend
++    ``MISMATCH_WARNING_SPECS`` constant: for each metadata key, the
++    human-readable setting name (``"object_name"``), the ``"format"`` and
++    ``"closing"`` message lines, and optional value ``"transform"`` and
++    message ``"body"`` functions (defaulting to the unchanged values and
++    ``name: value`` lines respectively).
++    """
++    named_metadata = list(named_metadata)
++    context = _MISMATCH_WARNING_CONTEXTS[competing_phases]
++    reference_line = (
++        f"Where {reference_name} was used as the reference entry calculation.\n"
++        if competing_phases
++        else ""
++    )
++    for mismatch_key, spec in mismatch_warning_specs.items():
++        transform = spec.get("transform", lambda value: value)
++        mismatches = [
++            (name, transform(metadata[mismatch_key]))
++            for name, metadata in named_metadata
++            if metadata.get(mismatch_key, False)
++        ]
++        if not mismatches:
++            continue
++
++        mismatches.sort(key=lambda x: (len(x[1]), x[0]), reverse=True)  # by number of items then name
++        body = spec.get("body", lambda lst: "\n".join(f"{name}: {value}" for name, value in lst))
++        warnings.warn(
++            f"There are mismatching {spec['object_name']} for (some of) your {context['calculations']} "
++            f"calculations which are likely to cause errors in the parsed results ({context['results']}). "
++            f"Found the following differences:\n(in the format: {spec['format'].format(**context)}\n"
++            f"{body(mismatches)}\n{reference_line}{spec['closing']}"
++        )
+diff --git a/doped/io/vasp/outputs.py b/doped/io/vasp/outputs.py
+index 4f5ef0326..3f604484c 100644
+--- a/doped/io/vasp/outputs.py
++++ b/doped/io/vasp/outputs.py
+@@ -1387,47 +1387,53 @@ def _total_energies_from_outputs(outputs: CalculationOutputs) -> list[float]:
+ MISMATCH_WARNING_SPECS = {
+     "mismatching_INCAR_tags": {
+         "object_name": "INCAR tags",
++        "data_key": "incar",
+         "per_defect_warning_prefix": "There are mismatching",
+         "transform": tuple,
+-        "message": lambda lst: (
+-            "'Defects: (INCAR tag, value in defect calculation, value in bulk calculation))':\n"
+-            f"{_format_mismatching_incar_warning(lst)}\n"
+-            "In general, the same INCAR settings should be used in all final calculations for these "
+-            "tags which can affect energies!"
++        "format": "'{names}: (INCAR tag, value in {name_1} calculation, value in {name_2} calculation))':",
++        "body": _format_mismatching_incar_warning,
++        "closing": (
++            "In general, the same INCAR settings should be used in all final calculations for these tags "
++            "which can affect energies!"
+         ),
+     },
+     "mismatching_KPOINTS": {
+         "object_name": "KPOINTS",
++        "data_key": "actual_kpoints",
+         "per_defect_warning_prefix": "The KPOINTS",
+         "transform": lambda defect_and_bulk_kpoints_lists: [
+             [[float(kpt) for kpt in kpoints] for kpoints in kpoints_list]
+             for kpoints_list in defect_and_bulk_kpoints_lists
+         ],
+-        "message": lambda lst: (
+-            "(defect kpoints, bulk kpoints)):\n" + "\n".join(f"{n}: {m}" for n, m in lst) + "\n"
+-            "In general, the same KPOINTS settings should be used for all final calculations for "
+-            "accurate results!"
++        "format": "({name_1} kpoints, {name_2} kpoints)):",
++        "closing": (
++            "In general, the same KPOINTS settings should be used for all final calculations for accurate "
++            "results!"
+         ),
+     },
+     "mismatching_POTCAR_symbols": {
+         "object_name": "POTCAR symbols",
++        "data_key": "potcar_symbols",
+         "per_defect_warning_prefix": "The POTCAR",
+-        "transform": lambda v: v,
+-        "message": lambda lst: (
+-            "(defect POTCARs, bulk POTCARs)):\n" + "\n".join(f"{n}: {m}" for n, m in lst) + "\n"
++        "format": "({name_1} POTCARs, {name_2} POTCARs)):",
++        "closing": (
+             "In general, the same POTCAR settings should be used for all calculations for accurate "
+             "results!"
+         ),
+     },
+ }
+ """
+-Specifications for collectively warning about mismatching (VASP) defect/bulk
+-calculation settings, as stored in ``DefectEntry.calculation_metadata`` by
+-``check_run_compatibility()``: for each metadata key, the human-readable
+-setting name, the per-defect warning prefix (for identifying warnings to
+-aggregate), and the value transform & message formatting functions.
+-
+-Part of the ``doped.io`` backend protocol.
++Specifications for collectively warning about mismatching (VASP) calculation
++settings, as returned by :func:`compare_calculation_settings` and stored in
++``DefectEntry.calculation_metadata`` (defect & bulk supercell calculations) or
++``entry.data`` (competing phases): for each mismatch key, the human-readable
++setting name, the ``data_key`` of the settings (identifying calculations with
++these settings, e.g. for choosing the reference competing phase entry), the
++per-defect warning prefix (for identifying warnings to aggregate), the message
++``"format"`` & ``"closing"`` lines (with ``{name_1}``/``{name_2}``/``{names}``
++placeholders for the calculation labels), and optional value ``"transform"`` &
++message ``"body"`` functions (see
++:func:`doped.io.utils._warn_calculation_mismatches`).
+ """
+ 
+ 
+@@ -1788,120 +1794,85 @@ def _get_vr_dict_without_proj_eigenvalues(vr: Vasprun) -> dict:
+     return vr_dict_wout_proj
+ 
+ 
+-def check_entry_compatibility(entries, template_candidates=None) -> None:
++def compare_calculation_settings(
++    settings: dict,
++    reference_settings: dict,
++    competing_phases: bool = False,
++    warn: bool = False,
++) -> dict[str, Any]:
+     r"""
+-    Check the compatibility of parsed competing phase entries, by comparing
+-    their ``INCAR`` tags and ``POTCAR`` symbols against those of a reference
+-    (template) entry, and warning about any mismatches (which can cause errors
+-    in the parsed energies, and thus the chemical potential limits).
+-
+-    Mismatches are also recorded in ``entry.data`` under
+-    ``"mismatching_INCAR_tags"`` / ``"mismatching_POTCAR_symbols"``, matching
+-    the corresponding keys set by :func:`check_run_compatibility` for defect
+-    & bulk supercell calculations. Entries without ``"incar"`` /
+-    ``"potcar_symbols"`` data (e.g. ``ComputedEntry``\s supplied directly by
+-    the user, rather than parsed from calculation outputs) are simply skipped
+-    for the corresponding check.
+-
+-    Part of the ``doped.io`` backend protocol (optional; used by
+-    :class:`~doped.chemical_potentials.CompetingPhasesAnalyzer` when
+-    ``check_compatibility=True``).
++    Compare the energy-affecting calculation settings (``INCAR`` tags,
++    ``POTCAR`` symbols and k-points with VASP) of a calculation to those of a
++    reference calculation.
++
++    Used for both defect & bulk supercell calculations (by
++    :func:`check_run_compatibility`, with ``CalculationOutputs.run_metadata``
++    settings) and competing phases (by |CompetingPhasesAnalyzer| when
++    ``check_compatibility=True`` (default), with ``entry.data`` settings).
+ 
+     Args:
+-        entries (list[|ComputedEntry|]):
+-            The competing phase entries to check.
+-        template_candidates (list[|ComputedEntry|]):
+-            Priority-ordered candidate entries from which to take the
+-            reference (template) calculation settings; the first with the
+-            relevant data is used. Default is ``None``, in which case
+-            ``entries`` is used.
+-    """
+-    if template_candidates is None:
+-        template_candidates = entries
+-
+-    sorted_entries_with_incar_data = [entry for entry in template_candidates if entry.data.get("incar")]
+-    sorted_entries_with_potcar_data = [
+-        entry for entry in template_candidates if entry.data.get("potcar_symbols")
+-    ]
+-    if sorted_entries_with_incar_data:
+-        incar_template_entry = sorted_entries_with_incar_data[0]
+-        for entry in entries:
+-            if not entry.data.get("incar"):  # no settings data for this entry (e.g. a user-supplied
+-                continue  # ``ComputedEntry``); skip rather than compare against nothing
+-            incar_mismatches = compare_incar_tags(
+-                entry.data["incar"],
+-                incar_template_entry.data["incar"],
+-                ignore_tags={"NKRED"},  # no NKRED mismatch warnings for competing phases
+-                warn=False,
+-            )  # warned collectively below if any mismatches
+-            # ignore ISIF warnings in cases of supercell calculations (i.e. either gas calculations
+-            # or bulk supercell -- assumed to be the correct volume):
+-            entry.data["mismatching_INCAR_tags"] = [
+-                i
+-                for i in incar_mismatches
+-                if i[0] != "ISIF"
+-                or all(ent.structure.volume < 800 for ent in [incar_template_entry, entry])
+-            ] or False
+-
+-        mismatching_INCAR_warnings = sorted(
+-            [
+-                (entry.name, tuple(entry.data.get("mismatching_INCAR_tags")))
+-                for entry in entries
+-                if entry.data.get("mismatching_INCAR_tags")
+-            ],
+-            key=lambda x: (len(x[1]), x[0]),
+-            reverse=True,
+-        )  # sort by number of mismatches, reversed
+-        if mismatching_INCAR_warnings:
+-            warnings.warn(
+-                f"There are mismatching INCAR tags for (some of) your competing phases "
+-                f"calculations which are likely to cause errors in the parsed results (energies "
+-                f"& thus chemical potential limits). Found the following differences:\n"
+-                f"(in the format: 'Entries: (INCAR tag, value in entry calculation, "
+-                f"value in reference calculation))':"
+-                f"\n{_format_mismatching_incar_warning(mismatching_INCAR_warnings)}\n"
+-                f"Where {incar_template_entry.name} was used as the reference entry calculation.\n"
+-                f"In general, the same INCAR settings should be used in all final calculations "
+-                f"for these tags which can affect energies!"
+-            )
++        settings (dict):
++            The calculation settings; ``"incar"`` and ``"potcar_symbols"``,
++            plus ``"kpoints"`` & ``"actual_kpoints"`` (defect/bulk
++            calculations) or ``"volume"`` (competing phases).
++        reference_settings (dict):
++            The settings of the reference calculation (e.g. the bulk
++            supercell).
++        competing_phases (bool):
++            Whether these are competing phase calculations, for which k-points
++            and ``NKRED`` are not compared, ``ISIF`` is only compared if both
++            cells are below 800 Å\ :sup:`3` (i.e. not gas molecule or bulk
++            supercell calculations, assumed to have the correct volume), and
++            ``POTCAR``\s are only compared for shared elements. Default is
++            ``False``.
++        warn (bool):
++            Whether to warn about each type of mismatch found. Default is
++            ``False``.
+ 
+-    if sorted_entries_with_potcar_data:
+-        potcar_template_entry = sorted_entries_with_potcar_data[0]
+-        for entry in entries:
+-            if not entry.data.get("potcar_symbols"):  # no settings data for this entry; skip
+-                continue
+-            potcar_mismatches = compare_potcar_symbols(
+-                entry.data["potcar_symbols"],
+-                potcar_template_entry.data["potcar_symbols"],
+-                warn=False,
+-                only_matching_elements=True,
+-            )  # warned collectively below if any mismatches
+-            entry.data["mismatching_POTCAR_symbols"] = potcar_mismatches or False
+-
+-        mismatching_potcars_warnings = sorted(
+-            [
+-                (entry.name, entry.data.get("mismatching_POTCAR_symbols"))
+-                for entry in entries
+-                if entry.data.get("mismatching_POTCAR_symbols")
+-            ],
+-            key=lambda x: (len(x[1]), x[0]),
+-            reverse=True,
+-        )  # sort by number of mismatches, reversed
+-        if mismatching_potcars_warnings:
+-            joined_info_string = "\n".join(
+-                [f"{name}: {mismatching}" for name, mismatching in mismatching_potcars_warnings]
+-            )
+-            warnings.warn(
+-                f"There are mismatching POTCAR symbols for (some of) your competing phases "
+-                f"calculations which are likely to cause errors in the parsed results (energies & "
+-                f"thus chemical potential limits). Found the following differences:\n"
+-                f"(in the format: (entry POTCARs, reference POTCARs)):"
+-                f"\n{joined_info_string}\n"
+-                f"Where {potcar_template_entry.name} was used as the reference entry "
+-                f"calculation.\n"
+-                f"In general, the same POTCAR settings should be used in all final calculations "
+-                f"for these tags which can affect energies!"
++    Returns:
++        dict:
++            The mismatches (``False`` if matching) of each compared type of
++            setting, under its :data:`MISMATCH_WARNING_SPECS` key.
++    """
++    labels = _io_utils._MISMATCH_WARNING_CONTEXTS[competing_phases]  # e.g. "defect" & "bulk", for warnings
++    incar_mismatches = compare_incar_tags(
++        settings.get("incar", {}),
++        reference_settings.get("incar", {}),
++        ignore_tags={"NKRED"} if competing_phases else None,
++        warn=warn,
++        name_1=labels["name_1"],
++        name_2=labels["name_2"],
++    )
++    if competing_phases:
++        incar_mismatches = [
++            i
++            for i in incar_mismatches
++            if i[0] != "ISIF" or all(s.get("volume", 0) < 800 for s in [settings, reference_settings])
++        ]
++    mismatches: dict[str, Any] = {
++        "mismatching_INCAR_tags": incar_mismatches or False,
++        "mismatching_POTCAR_symbols": compare_potcar_symbols(
++            settings.get("potcar_symbols", []),
++            reference_settings.get("potcar_symbols", []),
++            only_matching_elements=competing_phases,
++            warn=warn,
++            name_1=labels["name_1"],
++            name_2=labels["name_2"],
++        )
++        or False,
++    }
++    if not competing_phases:
++        mismatches["mismatching_KPOINTS"] = (
++            compare_kpoints(
++                actual_kpoints_1=settings["actual_kpoints"],
++                actual_kpoints_2=reference_settings["actual_kpoints"],
++                kpoints_1=settings.get("kpoints"),
++                kpoints_2=reference_settings.get("kpoints"),
++                warn=warn,
+             )
++            or False
++        )
++    return mismatches
+ 
+ 
+ def check_run_compatibility(
+@@ -1953,22 +1924,7 @@ def _incar_dict(outputs: CalculationOutputs) -> dict:
+         if (vr := outputs.raw.get("vasprun")) is not None:
+             run_metadata[f"{label}_vasprun_dict"] = _get_vr_dict_without_proj_eigenvalues(vr)
+ 
+-    incar_mismatches = compare_incar_tags(
+-        run_metadata["defect_incar"], run_metadata["bulk_incar"], warn=warn
+-    )
+-    potcar_mismatches = compare_potcar_symbols(
+-        run_metadata["defect_potcar_symbols"], run_metadata["bulk_potcar_symbols"], warn=warn
+-    )
+-    kpoint_mismatches = compare_kpoints(
+-        actual_kpoints_1=run_metadata["defect_actual_kpoints"],
+-        actual_kpoints_2=run_metadata["bulk_actual_kpoints"],
+-        kpoints_1=run_metadata["defect_kpoints"],
+-        kpoints_2=run_metadata["bulk_kpoints"],
+-        warn=warn,
+-    )
+     return {
+-        "mismatching_INCAR_tags": incar_mismatches or False,
+-        "mismatching_POTCAR_symbols": potcar_mismatches or False,
+-        "mismatching_KPOINTS": kpoint_mismatches or False,
++        **compare_calculation_settings(defect_outputs.run_metadata, bulk_outputs.run_metadata, warn=warn),
+         "run_metadata": run_metadata,
+     }
+diff --git a/doped/parsing.py b/doped/parsing.py
+index 4db702fb9..19ebb48b9 100644
+--- a/doped/parsing.py
++++ b/doped/parsing.py
+@@ -1059,8 +1059,9 @@ def __init__(
+         # Parsed defect checks:
+         # handle (and warn) any charge correction errors or calculation parameter mismatches:
+         _handle_charge_correction_errors(self.defect_dict, self.error_tolerance, **kwargs)
+-        _warn_calculation_mismatches(  # warn any mismatching defect/bulk calc parameters
+-            self.defect_dict, getattr(self._backend, "MISMATCH_WARNING_SPECS", {})
++        _io_utils._warn_calculation_mismatches(  # warn any mismatching defect/bulk calc parameters
++            [(name, entry.calculation_metadata) for name, entry in self.defect_dict.items()],
++            getattr(self._backend, "MISMATCH_WARNING_SPECS", {}),
+         )
+         _check_and_warn_dimer_bonds_spin_states(self.defect_dict, rtol=self.kwargs.get("rtol", 1.05))
+ 
+@@ -1807,37 +1808,6 @@ def _name_parsed_defect_entries(
+     return sort_defect_entries(defect_dict)
+ 
+ 
+-def _warn_calculation_mismatches(
+-    defect_dict: dict[str, DefectEntry], mismatch_warning_specs: dict[str, dict]
+-) -> None:
+-    """
+-    Generic handler for mismatching calculation parameters, stored in
+-    ``DefectEntry.calculation_metadata``.
+-
+-    ``mismatch_warning_specs`` is the calculator backend
+-    ``MISMATCH_WARNING_SPECS`` constant: for each metadata key, the
+-    human-readable setting name (``"object_name"``) and the value transform &
+-    message formatting functions.
+-    """
+-    for mismatch_key, mismatch_spec in mismatch_warning_specs.items():
+-        mismatches = [
+-            (name, mismatch_spec["transform"](entry.calculation_metadata[mismatch_key]))
+-            for name, entry in defect_dict.items()
+-            if entry.calculation_metadata.get(mismatch_key, False)
+-        ]
+-        if not mismatches:
+-            continue
+-
+-        # sort by number of items then by name, descending, then warn
+-        mismatches.sort(key=lambda x: (len(x[1]), x[0]), reverse=True)
+-
+-        warnings.warn(
+-            f"There are mismatching {mismatch_spec['object_name']} for (some of) your defect and bulk "
+-            f"calculations which are likely to cause errors in the parsed results (energies). Found the "
+-            f"following differences:\n(in the format: {mismatch_spec['message'](mismatches)})"
+-        )
+-
+-
+ def _handle_charge_correction_errors(
+     defect_dict: dict[str, DefectEntry], error_tolerance: float, **kwargs
+ ) -> None:
+diff --git a/examples/MgO_with_GPAW/Run1st_create_gpaw_workflow.py b/examples/MgO_with_GPAW/Run1st_create_gpaw_workflow.py
+index 4c6ff2abe..76d4823ad 100644
+--- a/examples/MgO_with_GPAW/Run1st_create_gpaw_workflow.py
++++ b/examples/MgO_with_GPAW/Run1st_create_gpaw_workflow.py
+@@ -1,3 +1,5 @@
++"""Prepare GPAW inputs for MgO defects and their competing-phase references."""
++
+ from pathlib import Path
+ 
+ from pymatgen.core.lattice import Lattice
+@@ -7,31 +9,32 @@
+ from doped.io.gpaw import DefectDictSet, DefectsSet
+ 
+ 
+-def write_competing_phase_inputs(gpaw_settings):
+-    """Write GPAW single-point inputs for the Mg/O elemental references."""
++def write_competing_phase_inputs(gpaw_settings, host_structure):
++    """Write GPAW single-point inputs for the host and elemental references."""
++    # (Manual for now: this will soon be replaced by automated competing-phase input generation in doped)
+     script_dir = Path(__file__).resolve().parent
+     competing_phases_dir = script_dir.parent / "MgO" / "CompetingPhases"
+     output_dir = Path("CompetingPhases_GPAW")
+ 
+-    # These structures were generated by the doped CompetingPhases workflow.
+-    phase_names = (
+-        "Mg_Fm-3m_EaH_0",
+-        "Mg_P6_3mmc_EaH_0.009",
+-        "Mg_R-3m_EaH_0.003",
+-        "O2_mmm_EaH_0",
+-    )
+-    for phase_name in phase_names:
++    # The host phase is the primitive cell of the defect host structure, with the same k-point density as
++    # the other phases (the Γ-only bulk supercell is not k-converged, which cancels in defect formation
++    # energies but not in the chemical potentials). The other structures were generated by the doped
++    # CompetingPhases workflow.
++    phase_structures = {"MgO_Fm-3m_EaH_0": host_structure.get_primitive_structure()}
++    for phase_name in ("Mg_Fm-3m_EaH_0", "Mg_P6_3mmc_EaH_0.009", "Mg_R-3m_EaH_0.003", "O2_mmm_EaH_0"):
+         structure_path = competing_phases_dir / phase_name / "vasp_std" / "POSCAR"
+         if not structure_path.exists():
+             raise FileNotFoundError(
+                 f"Missing CompetingPhases structure: {structure_path}. "
+                 "Run this script from a full doped source checkout."
+             )
++        # (Niggli-reduced, as GPAW warns that results may be wrong for skewed cells, e.g. Mg_Fm-3m_EaH_0):
++        phase_structures[phase_name] = Structure.from_file(structure_path).get_reduced_structure()
+ 
+-        phase_structure = Structure.from_file(structure_path)
++    for phase_name, phase_structure in phase_structures.items():
+         phase_settings = {
+             **gpaw_settings,
+-            "kpts": {"density": 3.0, "gamma": True},
++            "kpts": {"density": 4.0, "gamma": True},
+             "occupations": {"name": "fermi-dirac", "width": 0.1},
+         }
+         if phase_name.startswith("O2_"):
+@@ -56,6 +59,7 @@ def write_competing_phase_inputs(gpaw_settings):
+ 
+ 
+ def main():
++    """Write the defect, bulk and competing-phase calculation inputs."""
+     print("Generating MgO bulk structure natively...")
+     # Native structure generation
+     lattice = Lattice.cubic(4.21)
+@@ -72,7 +76,7 @@ def main():
+ 
+     # GPAW Parameters
+     gpaw_settings = {
+-        "mode": {"name": "pw", "ecut": 250},
++        "mode": {"name": "pw", "ecut": 400},  # (lower cutoffs give inconsistent bulk/host-phase energies)
+         "kpts": {"size": (1, 1, 1), "gamma": True},
+         "xc": "PBE",
+     }
+@@ -97,8 +101,8 @@ def main():
+             )
+             singlepoint_set.write_input(unrelaxed_name)
+ 
+-    print("Writing GPAW inputs for the Mg/O competing phases...")
+-    write_competing_phase_inputs(gpaw_settings)
++    print("Writing GPAW inputs for the MgO and Mg/O competing phases...")
++    write_competing_phase_inputs(gpaw_settings, bulk_structure)
+ 
+     print("Workflow setup complete! You can now run the calculations.")
+ 
+diff --git a/examples/MgO_with_GPAW/Run2nd_run_and_analyze.py b/examples/MgO_with_GPAW/Run2nd_run_and_analyze.py
+index 40564b924..229d52131 100644
+--- a/examples/MgO_with_GPAW/Run2nd_run_and_analyze.py
++++ b/examples/MgO_with_GPAW/Run2nd_run_and_analyze.py
+@@ -4,20 +4,15 @@
+ 
+ from monty.serialization import dumpfn
+ 
+-from doped.chemical_potentials import get_doped_chempots_from_entries
+-from doped.io import get_calculation_outputs
++from doped.chemical_potentials import CompetingPhasesAnalyzer
+ from doped.parsing import DefectsParser
+ from doped.thermodynamics import DefectThermodynamics
+ 
+ DIELECTRIC = 8.8963
+ 
+ 
+-def get_gpaw_entry(path):
+-    """Read one GPAW calculation as a computed structure entry."""
+-    return get_calculation_outputs(path, calculator="gpaw").get_computed_entry()
+-
+-
+ def main():
++    """Parse GPAW calculations and write Mg-rich and O-rich formation-energy plots."""
+     calculation_dir = Path.cwd()
+ 
+     print("Parsing MgO defect calculations...")
+@@ -29,13 +24,10 @@ def main():
+     )
+ 
+     print("Building GPAW-consistent Mg/O chemical potentials...")
+-    bulk_entry = get_gpaw_entry(calculation_dir / "MgO_bulk")
+-    phase_dir = calculation_dir / "CompetingPhases_GPAW"
+-    phase_entries = [get_gpaw_entry(path) for path in sorted(phase_dir.iterdir()) if path.is_dir()]
+-    chempots = get_doped_chempots_from_entries(
+-        [bulk_entry, *phase_entries],
+-        bulk_entry,
+-    )
++    # from the primitive-cell MgO host and Mg/O phase calculations (not the Γ-only ``MgO_bulk`` supercell):
++    chempots = CompetingPhasesAnalyzer(
++        "MgO", entries=calculation_dir / "CompetingPhases_GPAW", calculator="gpaw"
++    ).chempots
+     dumpfn(chempots, calculation_dir / "MgO_GPAW_chempots.json")
+ 
+     defect_thermodynamics = DefectThermodynamics(
+diff --git a/tests/test_chemical_potentials.py b/tests/test_chemical_potentials.py
+index 464f09a68..7f2edb740 100644
+--- a/tests/test_chemical_potentials.py
++++ b/tests/test_chemical_potentials.py
+@@ -2948,8 +2948,8 @@ def test_Sn_in_Cs2AgBiBr6(self):
+             ),
+             "Where Cs2AgBiBr6 was used as the reference entry calculation.",
+             (
+-                "In general, the same POTCAR settings should be used in all final calculations for these "
+-                "tags which can affect energies!"
++                "In general, the same POTCAR settings should be used for all calculations for accurate "
++                "results!"
+             ),
+             (
+                 "Cs2AgBiBr6 is not stable with respect to competing phases, having an energy above hull "
+diff --git a/tests/test_gpaw.py b/tests/test_gpaw.py
+index 5cb213257..10335850a 100644
+--- a/tests/test_gpaw.py
++++ b/tests/test_gpaw.py
+@@ -5,16 +5,22 @@
+ import contextlib
+ import copy
+ import os
++import pickle
+ import runpy
++import shutil
+ import tempfile
+ import unittest
+ from pathlib import Path
+ 
+ import numpy as np
+ import pytest
++from ase.build import bulk, molecule
+ from ase.io import read
+ from ase.io.trajectory import Trajectory
++from monty.json import MontyDecoder, MontyEncoder
++from pymatgen.core.lattice import Lattice
+ from pymatgen.core.structure import Structure
++from pymatgen.io.ase import AseAtomsAdaptor
+ from test_utils import (
+     _run_func_and_capture_stdout_warnings,
+     custom_mpl_image_compare,
+@@ -22,10 +28,17 @@
+     gpaw_data_dir,
+ )
+ 
++from doped.chemical_potentials import CompetingPhasesAnalyzer
+ from doped.generation import DefectsGenerator
+ from doped.io import get_calculation_outputs
+ from doped.io.gpaw.inputs import DefectDictSet, DefectsSet
+-from doped.io.gpaw.outputs import _find_gpaw_output, get_potentials_from_input
++from doped.io.gpaw.outputs import (
++    _find_gpaw_output,
++    get_competing_phase_entry,
++    get_gpaw_planar_averaged_potential,
++    get_gpaw_site_potentials,
++    get_potentials_from_input,
++)
+ from doped.io.inputs import _get_bulk_folder_name
+ from doped.parsing import DefectParser, DefectsParser
+ from doped.thermodynamics import DefectThermodynamics
+@@ -333,19 +346,26 @@ def test_relax_script_continues_from_trajectory(tmp_path):
+         np.testing.assert_allclose(positions, expected.positions)
+ 
+ 
++def _gpaw_workflow_settings() -> dict:
++    """
++    GPAW settings for the end-to-end defect workflow tests (spin-paired, at
++    Gamma, for speed), as GPAW parameter objects.
++    """
++    gpaw = pytest.importorskip("gpaw")
++    return {"mode": gpaw.PW(300), "eigensolver": gpaw.Davidson(3), "spinpol": False}
++
++
+ def _gpaw_defect_workflow(tmp_path: Path, supercell: Structure, names: tuple[str, ...], **kwargs):
+     """
+     Generate, write, run and parse GPAW calculations for the named defects in
+-    ``supercell`` (spin-paired, at Gamma, for speed), with GPAW parameter
+-    objects in ``gpaw_settings`` (converted to their ``todict()`` forms for the
+-    generated scripts and the ``DefectsSet`` JSON). ``kwargs`` are passed to
+-    ``DefectsParser``.
++    ``supercell``, with the ``_gpaw_workflow_settings()`` GPAW parameter
++    objects (converted to their ``todict()`` forms for the generated scripts
++    and the ``DefectsSet`` JSON). ``kwargs`` are passed to ``DefectsParser``.
+ 
+     Returns the ``DefectsParser``, and the warnings from defect generation and
+     parsing.
+     """
+-    gpaw = pytest.importorskip("gpaw")
+-    gpaw_settings = {"mode": gpaw.PW(300), "eigensolver": gpaw.Davidson(3), "spinpol": False}
++    gpaw_settings = _gpaw_workflow_settings()
+     defect_gen, _, generation_warnings = _run_func_and_capture_stdout_warnings(
+         DefectsGenerator, supercell, generate_supercell=False
+     )
+@@ -449,6 +469,42 @@ def setUpClass(cls):
+         mu = cls.entries[0].bulk_entry.energy_per_atom
+         cls.chempots = {"Mg": mu - 3, "O": mu + 3}
+ 
++    def test_bulk_settings_mismatch_warning(self):
++        """
++        Mismatching defect & bulk GPAW parameters (here with the bulk
++        recalculated with LDA rather than PBE) are stored for each defect, and
++        warned about once by ``DefectsParser``, naming the affected defects
++        (with the per-defect warnings suppressed).
++        """
++        bulk_path = Path(self.enterContext(tempfile.TemporaryDirectory())) / "MgO_bulk_LDA"
++        bulk_structure = self.entries[0].bulk_entry.structure
++        _run_phase_calculation(bulk_structure, bulk_path, {**_gpaw_workflow_settings(), "xc": "LDA"})
++        dp, _, warnings = _run_func_and_capture_stdout_warnings(
++            DefectsParser,
++            output_path=self.dp.output_path,
++            bulk_path=bulk_path,
++            calculator="gpaw",
++            dielectric=8.8963,
++            json_filename=False,
++        )
++        assert set(dp.defect_dict) == set(self.names)
++        for entry in dp.defect_dict.values():  # (xc as a str or {"name": ...} dict, depending on version)
++            mismatches = entry.calculation_metadata["mismatching_gpaw_parameters"]
++            assert list(mismatches) == ["xc"]
++            assert "PBE" in str(mismatches["xc"][0])  # defect
++            assert "LDA" in str(mismatches["xc"][1])  # bulk
++        mismatch_warnings = [
++            str(w.message) for w in warnings if "mismatching GPAW parameters" in str(w.message)
++        ]
++        assert len(mismatch_warnings) == 1, mismatch_warnings  # grouped, without the per-defect warnings
++        assert mismatch_warnings[0].startswith(
++            "There are mismatching GPAW parameters for (some of) your defect and bulk calculations"
++        )
++        assert all(
++            f"{name}: {entry.calculation_metadata['mismatching_gpaw_parameters']}" in mismatch_warnings[0]
++            for name, entry in dp.defect_dict.items()
++        )
++
+     def test_warnings(self):
+         _check_warnings(  # (small supercell warnings)
+             self.warnings,
+@@ -536,3 +592,224 @@ def test_fnv_plot_interstitial(self):
+         fig, warnings = self._correction_plot("Mg_i_Td_+2", fnv=True)
+         _check_warnings(warnings, [("(FNV) charge correction for defect Mg_i_Td_+2 is",)])
+         return fig
++
++
++def _run_phase_calculation(structure, folder, settings):
++    """
++    Generate, write and execute a small real GPAW single-point script.
++    """
++    DefectDictSet(structure, gpaw_settings=settings, calculation_type="singlepoint").write_input(folder)
++    with contextlib.chdir(folder):
++        namespace = runpy.run_path("singlepoint.py")
++    energy = namespace["energy"]
++    namespace["atoms"].calc = None
++    return energy
++
++
++@pytest.fixture(scope="module")
++def gpaw_competing_phases(tmp_path_factory):
++    """
++    Compute real MgO, Mg and triplet O2 references in the example layout.
++    """
++    pytest.importorskip("gpaw")
++    root = tmp_path_factory.mktemp("gpaw_phases") / "CompetingPhases_GPAW"
++    oxygen = molecule("O2")
++    oxygen.center(vacuum=3)
++    oxygen.pbc = True
++    atoms = {"MgO": bulk("MgO", "rocksalt", a=4.21), "Mg": bulk("Mg", "hcp", a=3.21, c=5.21), "O2": oxygen}
++    names = {"MgO": "MgO_Fm-3m_EaH_0", "Mg": "Mg_P6_3mmc_EaH_0", "O2": "O2_mmm_EaH_0"}
++    common = {"mode": {"name": "pw", "ecut": 300}, "xc": "PBE", "kpts": (1, 1, 1), "spinpol": False}
++    structures, settings, energies = {}, {}, {}
++    for phase, phase_atoms in atoms.items():
++        structures[phase] = AseAtomsAdaptor.get_structure(phase_atoms)
++        settings[phase] = copy.deepcopy(common)
++        if phase == "MgO":
++            settings[phase]["kpts"] = (2, 2, 2)
++        elif phase == "Mg":
++            settings[phase]["kpts"] = {"density": 1.0, "gamma": True}
++        elif phase == "O2":
++            settings[phase].update(spinpol=True, initial_magnetic_moments={"O": 1.0})
++        energies[phase] = _run_phase_calculation(structures[phase], root / names[phase], settings[phase])
++    return root, names, structures, settings, energies
++
++
++def test_competing_phase_entry_real_gpaw():
++    """
++    Read the shipped neutral restart without loading defect potentials.
++    """
++    pytest.importorskip("gpaw")
++    path = Path(gpaw_data_dir) / "MgO" / "bulk"
++    entry = get_competing_phase_entry(path)
++    assert entry.composition.reduced_formula == "MgO"
++    assert entry.energy == pytest.approx(73.25088079545509, abs=1e-6)
++    assert entry.data["folder"] == str(path)
++    assert entry.data["nsites"] == len(entry.structure)
++    assert entry.data["gpaw_parameters"]["mode"]["name"] == "pw"
++    assert entry.data["converged_electronic"] is True
++    assert "converged_ionic" not in entry.data
++    assert entry.parameters == {}  # GPAW settings are stored only in entry.data
++    # JSON-serialisable, and picklable (as needed for multiprocessed parsing), which unlike the JSON round
++    # trip also fails if any live calculator or file objects remain attached:
++    json_roundtrip = MontyDecoder().decode(MontyEncoder().encode(entry))
++    for roundtrip in (json_roundtrip, pickle.loads(pickle.dumps(entry))):
++        assert roundtrip.energy == entry.energy
++        assert roundtrip.structure == entry.structure
++
++
++def test_competing_phase_analyzer_gpaw(gpaw_competing_phases):
++    """
++    Parse the documented directory layout and check limits against real DFT
++    energies.
++    """
++    root, names, structures, _, energies = gpaw_competing_phases
++    analyzer, _, warnings = _run_func_and_capture_stdout_warnings(
++        CompetingPhasesAnalyzer, "MgO", entries=root, calculator="gpaw"
++    )
++    assert not warnings
++    assert len(analyzer.entries) == 3
++    mu_mg = energies["Mg"] / len(structures["Mg"])
++    mu_o = energies["O2"] / 2
++    assert analyzer.chempots["elemental_refs"] == pytest.approx({"Mg": mu_mg, "O": mu_o}, abs=1e-5)
++    formation_energy = energies["MgO"] - mu_mg - mu_o
++    assert formation_energy < 0
++    limits = list(analyzer.chempots["limits_wrt_el_refs"].values())
++    np.testing.assert_allclose(
++        sorted((mu["Mg"], mu["O"]) for mu in limits),
++        [(formation_energy, 0), (0, formation_energy)],
++        atol=1e-5,  # the chemical-potential dictionary rounds to five decimal places
++    )
++    assert set(analyzer.parsed_folders) == {str(root / name) for name in names.values()}
++    assert len(analyzer.get_formation_energy_df()) == 3
++    assert all(e.data["mismatching_gpaw_parameters"] is False for e in analyzer.entries)
++    # Density-based sampling must report a real mesh, rather than N/A.
++    magnesium = next(e for e in analyzer.entries if e.composition.reduced_formula == "Mg")
++    assert np.prod(magnesium.data["kpoints"][0]) > 1
++    oxygen = next(e for e in analyzer.entries if e.composition.reduced_formula == "O2")
++    assert oxygen.data["summary"]["total_magnetization"] == pytest.approx(2.0, abs=0.01)
++
++
++def test_restart_without_results_raises(tmp_path):
++    """
++    Check that a restart file without stored results (here from an unconverged
++    SCF) raises an informative error in each reader, rather than ``GPAW``
++    silently re-running the calculation during parsing.
++    """
++    gpaw = pytest.importorskip("gpaw")
++    atoms = bulk("Mg", "hcp", a=3.19, c=5.18)
++    atoms.calc = gpaw.GPAW(mode=gpaw.PW(200), kpts=(2, 2, 2), maxiter=2, txt=None)
++    with pytest.raises(gpaw.KohnShamConvergenceError):
++        atoms.get_potential_energy()
++    atoms.calc.write(tmp_path / "singlepoint.gpw")
++
++    for parse in (
++        lambda: get_calculation_outputs(tmp_path, calculator="gpaw"),
++        lambda: get_gpaw_site_potentials(tmp_path),
++        lambda: get_gpaw_planar_averaged_potential(tmp_path),
++        lambda: get_competing_phase_entry(tmp_path),  # (``ase`` reader; skipped with a warning by the CPA)
++    ):  # without the check, GPAW re-runs the SCF here (failing again, with ``maxiter=2``)
++        with pytest.raises(ValueError, match="holds no stored results"):
++            parse()
++
++
++def test_gpaw_competing_phase_example_inputs(tmp_path):
++    """
++    The example writes the host and elemental references into one phase
++    directory.
++    """
++    script = Path(__file__).resolve().parents[1] / "examples/MgO_with_GPAW/Run1st_create_gpaw_workflow.py"
++    write_inputs = runpy.run_path(str(script))["write_competing_phase_inputs"]
++    host = Structure.from_spacegroup("Fm-3m", Lattice.cubic(4.21), ["Mg", "O"], [[0, 0, 0], [0.5] * 3])
++    with contextlib.chdir(tmp_path):
++        write_inputs({"mode": {"name": "pw", "ecut": 300}, "xc": "PBE"}, host)
++    folders = list((tmp_path / "CompetingPhases_GPAW").iterdir())
++    assert len(folders) == 5
++    assert {p.name.split("_")[0] for p in folders} == {"MgO", "Mg", "O2"}
++    assert all((p / "singlepoint.py").exists() and (p / "structure.cif").exists() for p in folders)
++    cells = {p.name: read(p / "structure.cif") for p in folders}
++    assert len(cells["MgO_Fm-3m_EaH_0"]) == 2  # primitive cell of the host
++    # Niggli-reduced (e.g. the skewed Mg_Fm-3m_EaH_0 POSCAR), so GPAW doesn't warn about skewed cells:
++    assert all(45 < angle < 135 for atoms in cells.values() for angle in atoms.cell.angles())
++
++
++def test_competing_phase_file_priority(gpaw_competing_phases, tmp_path):
++    """
++    Use the GPAW filename priority in real phase directories (ignoring backup
++    files), and the generic file choice for ambiguous or backup-only folders.
++    """
++    root, names, _, _, energies = gpaw_competing_phases
++    target = tmp_path / "CompetingPhases_GPAW"
++    shutil.copytree(root, target)
++    mg = target / names["Mg"]
++    shutil.copyfile(mg / "singlepoint.gpw", mg / "relaxed.gpw")
++    # A real output of another phase makes a wrong file selection detectable.
++    shutil.copyfile(target / names["MgO"] / "singlepoint.gpw", mg / "singlepoint.gpw")
++    (mg / "singlepoint.gpw.bak").write_text("stale backup")
++    analyzer, _, warnings = _run_func_and_capture_stdout_warnings(
++        CompetingPhasesAnalyzer, "MgO", entries=target, calculator="gpaw"
++    )
++    assert any("Multiple" in str(w.message) and "relaxed.gpw" in str(w.message) for w in warnings)
++    assert all("electrostatic" not in str(w.message) for w in warnings)
++    assert str(mg / "relaxed.gpw") in analyzer.calc_output_paths
++    entry = next(e for e in analyzer.entries if e.composition.reduced_formula == "Mg")
++    assert entry.energy == pytest.approx(energies["Mg"])
++
++    # Folders with only non-priority names (ambiguous for ``_find_gpaw_output``) or only a backup (here a
++    # valid copy) fall back to the generic file choice; the former is parsed with a warning, and the latter
++    # reported as unparsable (rather than silently skipped):
++    (target / "Mg_renamed").mkdir()
++    for name in ("mg.gpw", "mg_relax.gpw"):
++        shutil.copyfile(mg / "relaxed.gpw", target / "Mg_renamed" / name)
++    backup = target / "Mg_backup" / "singlepoint.gpw.bak"
++    backup.parent.mkdir()
++    shutil.copyfile(mg / "relaxed.gpw", backup)
++    analyzer, _, warnings = _run_func_and_capture_stdout_warnings(
++        CompetingPhasesAnalyzer, "MgO", entries=target, calculator="gpaw"
++    )
++    messages = [str(w.message) for w in warnings]
++    assert any("Multiple `.gpw` files" in m and "Using mg_relax.gpw" in m for m in messages)
++    assert str(target / "Mg_renamed") in analyzer.parsed_folders
++    assert any(
++        "Failed to parse" in m and f"GPAW output must be a '.gpw' file: {backup}" in m for m in messages
++    )
++    assert str(backup.parent) not in analyzer.parsed_folders
++
++
++@pytest.mark.parametrize("parameter", ["xc", "setups", "mode"])
++def test_competing_phase_settings_mismatch(gpaw_competing_phases, tmp_path, parameter):
++    """
++    Warn about genuinely different XC, PAW datasets and modes in real
++    calculations.
++    """
++    root, names, structures, original_settings, _ = gpaw_competing_phases
++    target = tmp_path / "CompetingPhases_GPAW"
++    shutil.copytree(root, target)
++    phase = "O2" if parameter == "mode" else "Mg"
++    settings = copy.deepcopy(original_settings[phase])
++    if parameter == "xc":
++        settings["xc"] = "LDA"
++    elif parameter == "setups":
++        settings["setups"] = {"Mg": "2"}
++    else:
++        settings.update(mode={"name": "fd"}, h=0.4)
++    _run_phase_calculation(structures[phase], target / names[phase], settings)
++    analyzer, _, warnings = _run_func_and_capture_stdout_warnings(
++        CompetingPhasesAnalyzer, "MgO", entries=target, calculator="gpaw"
++    )
++    assert any("mismatching GPAW parameters" in str(w.message) for w in warnings)
++    entry = next(e for e in analyzer.entries if e.composition.reduced_formula == phase)
++    assert parameter in entry.data["mismatching_gpaw_parameters"]
++
++
++@pytest.mark.parametrize(
++    "kpts", [(2, 1, 1), {"size": (2, 1, 1), "gamma": True}, [[-0.25, 0, 0], [0.25, 0, 0]]]
++)
++def test_competing_phase_kpoint_mesh(gpaw_competing_phases, tmp_path, kpts):
++    """
++    Record actual regular meshes for tuple, size-dictionary and explicit
++    k-points.
++    """
++    _, _, structures, original_settings, _ = gpaw_competing_phases
++    settings = copy.deepcopy(original_settings["Mg"])
++    settings["kpts"] = kpts
++    _run_phase_calculation(structures["Mg"], tmp_path, settings)
++    assert get_competing_phase_entry(tmp_path).data["kpoints"] == [[2, 1, 1]]

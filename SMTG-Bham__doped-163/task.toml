@@ -1,0 +1,70 @@
+version = "1.0"
+
+[task]
+name = "default/SMTG-Bham__doped-163"
+description = "Load GPAW PAW projections for defect eigenvalue analysis"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "doped",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "SMTG-Bham/doped"
+ref = "cfe128b0a9f813999fd49cb78937a690134e1a2a"
+reference = "https://github.com/SMTG-Bham/doped/pull/163"
+source_access = "auto"
+built_at = "2026-11-14T06:02:34.001853+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:8a0a30a81063dc74ce6cb740b623d2af2b0099e734239a81856d9eebd2d320ba"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-12T18:34:42Z"
+diff_format = "unified"
+context_files = [
+    "docs/Adding_Calculators.rst",
+    "docs/GPAW_Support.rst",
+    "docs/Tips.rst",
+    "doped/core.py",
+    "doped/io/gpaw/outputs.py",
+    "doped/io/vasp/outputs.py",
+    "doped/utils/eigenvalues.py",
+    "tests/test_gpaw.py",
+    "tests/test_parsing.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 742
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

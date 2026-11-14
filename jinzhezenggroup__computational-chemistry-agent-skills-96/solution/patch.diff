@@ -1,0 +1,591 @@
+diff --git a/README.md b/README.md
+index 4500825..a024b07 100644
+--- a/README.md
++++ b/README.md
+@@ -89,7 +89,7 @@ openclaw skills list --eligible
+ | [dpdata-cli](tools/dpdata-cli/SKILL.md) | Convert and manipulate atomic simulation data formats using dpdata CLI. Use when converting between DFT/MD output formats or preparing DeePMD-kit training data. Supports 50+ formats including deepmd, xyz or extxyz, ABACUS, VASP, LAMMPS, CP2K, etc. | 1.0 | Requires uvx (uv) for running dpdata |
+ | [dpdata-driver](tools/dpdata-driver/SKILL.md) | Use dpdata Python Driver plugins to label systems (energies/forces/virials) via System.predict(), list available drivers, and build Driver objects (ase/deepmd/gaussian/sqm/hybrid). Use when working with dpdata Python API (not CLI) and you need driver-based energy/force prediction, plugin registration keys, or examples of using dpdata with ASE calculators or DeePMD models. | 1.0 | Requires dpdata or uv for running dpdata |
+ | [dpdata-minimizer](tools/dpdata-minimizer/SKILL.md) | Minimize geometries with dpdata minimizer plugins via System.minimize(), including how minimizers relate to drivers (ASEMinimizer needs a dpdata Driver) and how to list supported minimizers (ase/sqm). Use when doing geometry optimization/minimization through dpdata Python API. | - | - |
+-| [dpdisp-submit](tools/dpdisp-submit/SKILL.md) | Run Shell commands as computational jobs, on local machines or HPC clusters, through Shell, Slurm, PBS, LSF, Bohrium, etc. USE WHEN the user needs to submit batch jobs to a cluster, run commands on a remote server, execute tasks via job schedulers (Slurm, PBS, LSF), or safely run long-term/background shell commands that require state tracking and auto-recovery. | 1.0 | Requires uv and access to the internet. |
++| [dpdisp-submit](tools/dpdisp-submit/SKILL.md) | Run Shell commands as computational jobs, on local machines or HPC clusters, through Shell, Slurm, PBS, LSF, Bohrium, etc. USE WHEN the user needs to submit batch jobs to a cluster, run commands on a remote server, execute tasks via job schedulers (Slurm, PBS, LSF), or safely run long-term/background shell commands that require state tracking and auto-recovery. | 1.0 | - |
+ | [search-species](tools/search-species/SKILL.md) | USE WHEN requesting core chemical structural data (SMILES, formula, mass, 2D images) via IUPAC, common, or multilingual names. You MUST actively retrieve the data using this skill; DO NOT hallucinate or generate structures yourself. DO NOT USE WHEN asking for physical properties (melting point, solubility), safety/toxicity data (MSDS), or synthesis pathways. | 0.1.0 | Requires `uv` installed. |
+ <!-- SKILLS_TABLE_END -->
+ 
+diff --git a/machine-learning-potentials/dpgen-simplify/SKILL.md b/machine-learning-potentials/dpgen-simplify/SKILL.md
+index e5cea1d..eccd142 100644
+--- a/machine-learning-potentials/dpgen-simplify/SKILL.md
++++ b/machine-learning-potentials/dpgen-simplify/SKILL.md
+@@ -30,7 +30,7 @@ dpgen simplify param.json machine.json
+ 
+ Environment boundary rule:
+ 
+-- Outer layer: run `dpgen simplify param.json machine.json` in an activated environment where `dpgen --version` works.
++- Outer layer: run `dpgen simplify param.json machine.json` in an activated environment where `dpgen -h` works.
+ - Inner layer: for scheduler stages, explicitly activate runtime in `resources.source_list` on the server side.
+ 
+ ## Agent responsibilities
+@@ -102,7 +102,7 @@ Do not guess conda environment names, module names, or site-specific paths.
+ Use an activated DP-GEN environment and verify with:
+ 
+ ```bash
+-dpgen --version
++dpgen -h
+ ```
+ 
+ Do not start simplify from a shell where `dpgen` is unavailable.
+@@ -198,6 +198,7 @@ For each stage `train`, `model_devi`, and `fp`, collect or preserve:
+ - `machine.context_type`
+ - `machine.local_root`
+ - `machine.remote_root`
++- `resources.batch_type` (use the same backend as `machine.batch_type`)
+ - `resources.number_node`
+ - `resources.cpu_per_node`
+ - `resources.gpu_per_node`
+@@ -234,12 +235,11 @@ Key fields usually include:
+ - `numb_models`
+ - `default_training_param`
+ - `fp_style`
+-- `shuffle_poscar`
+ - `fp_task_max`
+ - `fp_task_min`
+-- `fp_pp_path`
+-- `fp_pp_files`
+ - `fp_params`
++- backend support fields such as `fp_pp_path` and `fp_pp_files` only when the
++  selected FP schema requires them
+ - `init_pick_number`
+ - `iter_pick_number`
+ - `model_devi_f_trust_lo`
+@@ -263,7 +263,7 @@ For each stage, keep the following explicit:
+ 
+ - `command`
+ - machine or context configuration
+-- resources
++- resources, including the same `batch_type` used by the machine block
+ - queue or partition if needed
+ - cpu and gpu counts
+ - custom scheduler flags
+@@ -278,7 +278,7 @@ Before execution, validate the workflow in this order:
+ 1. confirm outer-layer `dpgen` is available:
+ 
+ ```bash
+-dpgen --version
++dpgen -h
+ ```
+ 
+ 2. validate JSON syntax:
+@@ -316,6 +316,8 @@ Always provide:
+ - Keep `type_map` ordering consistent with dataset typing.
+ - If required inputs are missing, stop and ask instead of guessing.
+ - If `fp_style` is `none`, skip FP-specific prompts and keep FP-specific settings disabled or unset.
++- The machine schema still requires an `fp` stage and a string command. Use the
++  no-op command `true` when `fp_style` is `none`.
+ - If data is already labeled and the user does not request new labels, enforce `fp_style = "none"` and do not require active FP runtime fields.
+ - Do not assume outer-shell activation is inherited by stage jobs; for scheduler execution, require explicit `source_list` per stage.
+ - If the user already has working templates, patch them rather than overwriting them blindly.
+diff --git a/machine-learning-potentials/dpgen-simplify/assets/machine.template.json b/machine-learning-potentials/dpgen-simplify/assets/machine.template.json
+index e2ddb38..261d5ca 100644
+--- a/machine-learning-potentials/dpgen-simplify/assets/machine.template.json
++++ b/machine-learning-potentials/dpgen-simplify/assets/machine.template.json
+@@ -4,46 +4,49 @@
+     "train": {
+         "command": "dp",
+         "machine": {
+-            "batch_type": null,
+-            "context_type": null,
++            "batch_type": "Shell",
++            "context_type": "LazyLocalContext",
+             "local_root": "./",
+-            "remote_root": null
++            "remote_root": "./"
+         },
+         "resources": {
+-            "number_node": null,
+-            "cpu_per_node": null,
+-            "gpu_per_node": null,
+-            "group_size": null
++            "batch_type": "Shell",
++            "number_node": 1,
++            "cpu_per_node": 1,
++            "gpu_per_node": 0,
++            "group_size": 1
+         }
+     },
+     "model_devi": {
+         "command": "dp",
+         "machine": {
+-            "batch_type": null,
+-            "context_type": null,
++            "batch_type": "Shell",
++            "context_type": "LazyLocalContext",
+             "local_root": "./",
+-            "remote_root": null
++            "remote_root": "./"
+         },
+         "resources": {
+-            "number_node": null,
+-            "cpu_per_node": null,
+-            "gpu_per_node": null,
+-            "group_size": null
++            "batch_type": "Shell",
++            "number_node": 1,
++            "cpu_per_node": 1,
++            "gpu_per_node": 0,
++            "group_size": 1
+         }
+     },
+     "fp": {
+-        "command": null,
++        "command": "true",
+         "machine": {
+-            "batch_type": null,
+-            "context_type": null,
++            "batch_type": "Shell",
++            "context_type": "LazyLocalContext",
+             "local_root": "./",
+-            "remote_root": null
++            "remote_root": "./"
+         },
+         "resources": {
+-            "number_node": null,
+-            "cpu_per_node": null,
+-            "gpu_per_node": null,
+-            "group_size": null
++            "batch_type": "Shell",
++            "number_node": 1,
++            "cpu_per_node": 1,
++            "gpu_per_node": 0,
++            "group_size": 1
+         }
+     }
+ }
+diff --git a/machine-learning-potentials/dpgen-simplify/assets/machine.template.local-shell.json b/machine-learning-potentials/dpgen-simplify/assets/machine.template.local-shell.json
+index 6da1ca2..261d5ca 100644
+--- a/machine-learning-potentials/dpgen-simplify/assets/machine.template.local-shell.json
++++ b/machine-learning-potentials/dpgen-simplify/assets/machine.template.local-shell.json
+@@ -10,9 +10,10 @@
+             "remote_root": "./"
+         },
+         "resources": {
++            "batch_type": "Shell",
+             "number_node": 1,
+-            "cpu_per_node": null,
+-            "gpu_per_node": null,
++            "cpu_per_node": 1,
++            "gpu_per_node": 0,
+             "group_size": 1
+         }
+     },
+@@ -25,14 +26,15 @@
+             "remote_root": "./"
+         },
+         "resources": {
++            "batch_type": "Shell",
+             "number_node": 1,
+-            "cpu_per_node": null,
+-            "gpu_per_node": null,
++            "cpu_per_node": 1,
++            "gpu_per_node": 0,
+             "group_size": 1
+         }
+     },
+     "fp": {
+-        "command": null,
++        "command": "true",
+         "machine": {
+             "batch_type": "Shell",
+             "context_type": "LazyLocalContext",
+@@ -40,9 +42,10 @@
+             "remote_root": "./"
+         },
+         "resources": {
++            "batch_type": "Shell",
+             "number_node": 1,
+-            "cpu_per_node": null,
+-            "gpu_per_node": null,
++            "cpu_per_node": 1,
++            "gpu_per_node": 0,
+             "group_size": 1
+         }
+     }
+diff --git a/machine-learning-potentials/dpgen-simplify/assets/machine.template.server-local-slurm.json b/machine-learning-potentials/dpgen-simplify/assets/machine.template.server-local-slurm.json
+index 6840701..07ebcc9 100644
+--- a/machine-learning-potentials/dpgen-simplify/assets/machine.template.server-local-slurm.json
++++ b/machine-learning-potentials/dpgen-simplify/assets/machine.template.server-local-slurm.json
+@@ -7,13 +7,14 @@
+             "batch_type": "Slurm",
+             "context_type": "LocalContext",
+             "local_root": "./",
+-            "remote_root": null
++            "remote_root": "./"
+         },
+         "resources": {
+-            "number_node": null,
+-            "cpu_per_node": null,
+-            "gpu_per_node": null,
+-            "queue_name": null,
++            "batch_type": "Slurm",
++            "number_node": 1,
++            "cpu_per_node": 1,
++            "gpu_per_node": 0,
++            "queue_name": "",
+             "group_size": 1,
+             "custom_flags": [],
+             "source_list": []
+@@ -25,31 +26,33 @@
+             "batch_type": "Slurm",
+             "context_type": "LocalContext",
+             "local_root": "./",
+-            "remote_root": null
++            "remote_root": "./"
+         },
+         "resources": {
+-            "number_node": null,
+-            "cpu_per_node": null,
+-            "gpu_per_node": null,
+-            "queue_name": null,
++            "batch_type": "Slurm",
++            "number_node": 1,
++            "cpu_per_node": 1,
++            "gpu_per_node": 0,
++            "queue_name": "",
+             "group_size": 1,
+             "custom_flags": [],
+             "source_list": []
+         }
+     },
+     "fp": {
+-        "command": null,
++        "command": "true",
+         "machine": {
+             "batch_type": "Slurm",
+             "context_type": "LocalContext",
+             "local_root": "./",
+-            "remote_root": null
++            "remote_root": "./"
+         },
+         "resources": {
+-            "number_node": null,
+-            "cpu_per_node": null,
+-            "gpu_per_node": null,
+-            "queue_name": null,
++            "batch_type": "Slurm",
++            "number_node": 1,
++            "cpu_per_node": 1,
++            "gpu_per_node": 0,
++            "queue_name": "",
+             "group_size": 1,
+             "custom_flags": [],
+             "source_list": []
+diff --git a/machine-learning-potentials/dpgen-simplify/assets/machine.template.ssh-remote-slurm.json b/machine-learning-potentials/dpgen-simplify/assets/machine.template.ssh-remote-slurm.json
+index 70fa45e..88f0116 100644
+--- a/machine-learning-potentials/dpgen-simplify/assets/machine.template.ssh-remote-slurm.json
++++ b/machine-learning-potentials/dpgen-simplify/assets/machine.template.ssh-remote-slurm.json
+@@ -7,19 +7,20 @@
+             "batch_type": "Slurm",
+             "context_type": "SSHContext",
+             "local_root": "./",
+-            "remote_root": null,
++            "remote_root": "/path/to/remote/work",
+             "remote_profile": {
+-                "hostname": null,
+-                "username": null,
++                "hostname": "cluster.example.com",
++                "username": "REPLACE_ME",
+                 "port": 22,
+-                "key_filename": null
++                "key_filename": "/path/to/private/key"
+             }
+         },
+         "resources": {
+-            "number_node": null,
+-            "cpu_per_node": null,
+-            "gpu_per_node": null,
+-            "queue_name": null,
++            "batch_type": "Slurm",
++            "number_node": 1,
++            "cpu_per_node": 1,
++            "gpu_per_node": 0,
++            "queue_name": "",
+             "group_size": 1,
+             "custom_flags": [],
+             "source_list": []
+@@ -31,43 +32,45 @@
+             "batch_type": "Slurm",
+             "context_type": "SSHContext",
+             "local_root": "./",
+-            "remote_root": null,
++            "remote_root": "/path/to/remote/work",
+             "remote_profile": {
+-                "hostname": null,
+-                "username": null,
++                "hostname": "cluster.example.com",
++                "username": "REPLACE_ME",
+                 "port": 22,
+-                "key_filename": null
++                "key_filename": "/path/to/private/key"
+             }
+         },
+         "resources": {
+-            "number_node": null,
+-            "cpu_per_node": null,
+-            "gpu_per_node": null,
+-            "queue_name": null,
++            "batch_type": "Slurm",
++            "number_node": 1,
++            "cpu_per_node": 1,
++            "gpu_per_node": 0,
++            "queue_name": "",
+             "group_size": 1,
+             "custom_flags": [],
+             "source_list": []
+         }
+     },
+     "fp": {
+-        "command": null,
++        "command": "true",
+         "machine": {
+             "batch_type": "Slurm",
+             "context_type": "SSHContext",
+             "local_root": "./",
+-            "remote_root": null,
++            "remote_root": "/path/to/remote/work",
+             "remote_profile": {
+-                "hostname": null,
+-                "username": null,
++                "hostname": "cluster.example.com",
++                "username": "REPLACE_ME",
+                 "port": 22,
+-                "key_filename": null
++                "key_filename": "/path/to/private/key"
+             }
+         },
+         "resources": {
+-            "number_node": null,
+-            "cpu_per_node": null,
+-            "gpu_per_node": null,
+-            "queue_name": null,
++            "batch_type": "Slurm",
++            "number_node": 1,
++            "cpu_per_node": 1,
++            "gpu_per_node": 0,
++            "queue_name": "",
+             "group_size": 1,
+             "custom_flags": [],
+             "source_list": []
+diff --git a/machine-learning-potentials/dpgen-simplify/assets/param.example.qm7.from-official-docs.json b/machine-learning-potentials/dpgen-simplify/assets/param.example.qm7.from-official-docs.json
+index 0cd4af4..71b70e5 100644
+--- a/machine-learning-potentials/dpgen-simplify/assets/param.example.qm7.from-official-docs.json
++++ b/machine-learning-potentials/dpgen-simplify/assets/param.example.qm7.from-official-docs.json
+@@ -17,6 +17,7 @@
+     "pick_data": "/path/to/qm7/deepmd_npy",
+     "init_data_prefix": "",
+     "init_data_sys": [],
++    "sys_configs": [],
+     "sys_batch_size": [
+         "auto"
+     ],
+@@ -87,11 +88,8 @@
+         }
+     },
+     "fp_style": "gaussian",
+-    "shuffle_poscar": false,
+     "fp_task_max": 1000,
+     "fp_task_min": 10,
+-    "fp_pp_path": "/path/to/fp/support/files",
+-    "fp_pp_files": [],
+     "fp_params": {
+         "keywords": "mn15/6-31g** force nosymm scf(maxcyc=512)",
+         "nproc": 28,
+diff --git a/machine-learning-potentials/dpgen-simplify/assets/param.template.json b/machine-learning-potentials/dpgen-simplify/assets/param.template.json
+index 642d78f..f756790 100644
+--- a/machine-learning-potentials/dpgen-simplify/assets/param.template.json
++++ b/machine-learning-potentials/dpgen-simplify/assets/param.template.json
+@@ -1,24 +1,22 @@
+ {
+-    "type_map": null,
+-    "mass_map": null,
+-    "pick_data": null,
+-    "sys_configs": null,
++    "type_map": [
++        "REPLACE_ME"
++    ],
++    "mass_map": "auto",
++    "pick_data": "/path/to/deepmd/data",
++    "sys_configs": [],
+     "init_data_prefix": "",
+     "init_data_sys": [],
+     "sys_batch_size": [
+         "auto"
+     ],
+-    "train_backend": null,
++    "train_backend": "tensorflow",
+     "labeled": true,
+-    "fp_task_max": null,
+-    "fp_task_min": null,
+-    "model_devi_e_trust_lo": null,
+-    "model_devi_e_trust_hi": null,
+-    "init_pick_number": null,
+-    "iter_pick_number": null,
+-    "model_devi_f_trust_lo": null,
+-    "model_devi_f_trust_hi": null,
++    "init_pick_number": 100,
++    "iter_pick_number": 100,
++    "model_devi_f_trust_lo": 0.1,
++    "model_devi_f_trust_hi": 0.3,
+     "numb_models": 4,
+     "fp_style": "none",
+-    "default_training_param": null
++    "default_training_param": {}
+ }
+diff --git a/machine-learning-potentials/dpgen-simplify/references/machine-fields.md b/machine-learning-potentials/dpgen-simplify/references/machine-fields.md
+index a2d2b8a..b7fad39 100644
+--- a/machine-learning-potentials/dpgen-simplify/references/machine-fields.md
++++ b/machine-learning-potentials/dpgen-simplify/references/machine-fields.md
+@@ -18,21 +18,24 @@ Use one of these profiles based on where `dpgen` is launched:
+ 
+ 1. Server-local Slurm (already logged into cluster login node)
+ 
+-   - `context_type = "LocalContext"`
+-   - `batch_type = "Slurm"`
++   - `machine.context_type = "LocalContext"`
++   - `machine.batch_type = "Slurm"`
++   - `resources.batch_type = "Slurm"`
+    - template: `assets/machine.template.server-local-slurm.json`
+ 
+ 1. Local workstation -> remote Slurm cluster
+ 
+-   - `context_type = "SSHContext"`
+-   - `batch_type = "Slurm"`
++   - `machine.context_type = "SSHContext"`
++   - `machine.batch_type = "Slurm"`
++   - `resources.batch_type = "Slurm"`
+    - requires `remote_profile`
+    - template: `assets/machine.template.ssh-remote-slurm.json`
+ 
+ 1. Local single-machine shell testing
+ 
+-   - `context_type = "LazyLocalContext"`
+-   - `batch_type = "Shell"`
++   - `machine.context_type = "LazyLocalContext"`
++   - `machine.batch_type = "Shell"`
++   - `resources.batch_type = "Shell"`
+    - template: `assets/machine.template.local-shell.json`
+ 
+ If your current workflow is "on server, submit Slurm jobs", use profile 1.
+@@ -49,7 +52,7 @@ If your current workflow is "on server, submit Slurm jobs", use profile 1.
+ - custom scheduler flags if needed
+ 
+ Important boundary: outer `dpgen simplify` environment and inner stage-job environments are different layers.
+-Outer layer must be an activated DP-GEN environment (`dpgen --version` passes).
++Outer layer must be an activated DP-GEN environment (`dpgen -h` passes).
+ Do not assume outer activation is inherited by stage jobs. For scheduler profiles, set `resources.source_list` explicitly.
+ 
+ ## `train`
+@@ -84,7 +87,9 @@ Typical concerns:
+ - scheduler settings
+ - backend-specific environment
+ 
+-If `fp_style` is `none`, keep this stage disabled/unset and do not require active FP executable settings.
++If `fp_style` is `none`, keep this stage inactive and do not require active FP
++executable settings. The machine schema still requires the stage and a string
++command, so use the no-op command `true`.
+ 
+ ## Practical advice
+ 
+diff --git a/machine-learning-potentials/dpgen-simplify/references/workflow-notes.md b/machine-learning-potentials/dpgen-simplify/references/workflow-notes.md
+index d19d1db..64f85a7 100644
+--- a/machine-learning-potentials/dpgen-simplify/references/workflow-notes.md
++++ b/machine-learning-potentials/dpgen-simplify/references/workflow-notes.md
+@@ -6,7 +6,7 @@
+ dpgen simplify param.json machine.json
+ ```
+ 
+-Run this command from an activated DP-GEN environment where `dpgen --version` succeeds.
++Run this command from an activated DP-GEN environment where `dpgen -h` succeeds.
+ 
+ ## Recommended workflow
+ 
+@@ -25,7 +25,7 @@ Run this command from an activated DP-GEN environment where `dpgen --version` su
+ Run these before execution:
+ 
+ ```bash
+-dpgen --version
++dpgen -h
+ python -m json.tool param.json
+ python -m json.tool machine.json
+ ```
+diff --git a/sync-state.toml b/sync-state.toml
+index 7bea975..da705d8 100644
+--- a/sync-state.toml
++++ b/sync-state.toml
+@@ -37,14 +37,14 @@ last_upstream_ref = "master"
+ updated_at = "2026-03-25T11:34:56.449573+00:00"
+ 
+ [jobs."dpdisp-submit"]
+-last_upstream_commit = "b7a3b1266fa67e6c21aff2fac276946225171329"
++last_upstream_commit = "e9094e377075f5311955dea78d599f78fad465a3"
+ last_upstream_ref = "master"
+-updated_at = "2026-03-25T11:34:42.883004+00:00"
++updated_at = "2026-09-21T12:36:34.063358+00:00"
+ 
+ [jobs."dpgen-simplify"]
+-last_upstream_commit = "a8d60bac18cede01c8e8afed06bbffee68d93b76"
++last_upstream_commit = "1e26365d007c232d4616255f1ea09251187e1f9a"
+ last_upstream_ref = "master"
+-updated_at = "2026-05-08T08:52:44.584596+00:00"
++updated_at = "2026-09-21T12:36:46.272521+00:00"
+ 
+ [jobs."lammps-deepmd"]
+ last_upstream_commit = "5156c408b817342d190b67b6f0d922447663e5d5"
+diff --git a/tools/dpdisp-submit/SKILL.md b/tools/dpdisp-submit/SKILL.md
+index 7cce412..ce8d4bb 100644
+--- a/tools/dpdisp-submit/SKILL.md
++++ b/tools/dpdisp-submit/SKILL.md
+@@ -3,7 +3,6 @@ name: dpdisp-submit
+ description: >
+   Run Shell commands as computational jobs, on local machines or HPC clusters, through Shell, Slurm, PBS, LSF, Bohrium, etc.
+   USE WHEN the user needs to submit batch jobs to a cluster, run commands on a remote server, execute tasks via job schedulers (Slurm, PBS, LSF), or safely run long-term/background shell commands that require state tracking and auto-recovery.
+-compatibility: Requires uv and access to the internet.
+ license: LGPL-3.0-or-later
+ metadata:
+   author: deepmodeling
+@@ -14,6 +13,8 @@ metadata:
+ 
+ This Skill guides the Agent to use the DPDispatcher tool to convert Shell commands into computational jobs and submit them to local machines or High-Performance Computing (HPC) clusters (supporting environments such as Shell, Slurm, PBS, LSF, Bohrium, etc.).
+ 
++Prerequisites: `uv` and internet access.
++
+ ## Syntax & Protocol
+ 
+ This section defines the field mappings, variable syntax, and special flags for the configuration file.
+@@ -76,8 +77,10 @@ You **MUST** generate the configuration file based on the acquired Schema protoc
+ 
+ ### Validate & Submit
+ 
+-You **MUST** strictly execute the following command chain in sequence.
+-**Note**: If the `$ref` syntax is used in the configuration, you must pass the `--allow-ref` flag to all validation and submission commands, otherwise parsing or validation will fail even if the JSON content is correct.
++You **MUST** choose the command chain that matches the configuration and execute it
++in sequence. Keep the same choice for every later resume or synchronization run.
++
++For a configuration without `$ref`, keep external references disabled:
+ 
+ ```bash
+ # Logic and Schema Validation
+@@ -86,6 +89,16 @@ uvx --with dpdispatcher dargs check -f dpdispatcher.entrypoints.submit.submissio
+ uvx --from dpdispatcher dpdisp submit submission.json
+ ```
+ 
++For a configuration that uses `$ref`, pass `--allow-ref` to both validation and
++submission; omitting it makes a valid referenced configuration fail:
++
++```bash
++# Logic and Schema Validation
++uvx --with dpdispatcher dargs check --allow-ref -f dpdispatcher.entrypoints.submit.submission_args submission.json
++# Submit Job
++uvx --from dpdispatcher dpdisp submit --allow-ref submission.json
++```
++
+ ### Reporting Standard
+ 
+ After execution finishes, you **MUST** output a structured report to the user with the following fixed elements:

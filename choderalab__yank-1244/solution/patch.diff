@@ -1,0 +1,215 @@
+diff --git a/.github/workflows/CI.yaml b/.github/workflows/CI.yaml
+new file mode 100644
+index 00000000..fbc85aea
+--- /dev/null
++++ b/.github/workflows/CI.yaml
+@@ -0,0 +1,119 @@
++name: CI
++
++on:
++  pull_request:
++    branches:
++      - "master"
++  schedule:
++    # nightly tests
++    - cron: "0 0 * * *"
++  push:
++    branches:
++      - master
++
++jobs:
++  test:
++    name: Test on ${{ matrix.cfg.os }}, Python ${{ matrix.cfg.python-version }}, OpenMM ${{ matrix.cfg.openmm }}
++    runs-on: ${{ matrix.cfg.os }}
++    strategy:
++      fail-fast: false
++      matrix:
++        cfg:
++          - { os: ubuntu-latest, python-version: 3.7, docs: true,  openmm: latest }
++          - { os: macos-latest,  python-version: 3.7, docs: true,  openmm: latest }
++          - { os: ubuntu-latest, python-version: 3.8, docs: false, openmm: latest }
++          - { os: ubuntu-latest, python-version: 3.7, docs: false, openmm: nightly }
++          - { os: ubuntu-latest, python-version: 3.8, docs: false, openmm: nightly }
++          - { os: ubuntu-latest, python-version: 3.7, docs: false, openmm: conda-forge }
++          - { os: ubuntu-latest, python-version: 3.8, docs: false, openmm: conda-forge }
++
++    env:
++      OPENMM: ${{ matrix.cfg.openmm }}
++      OE_LICENSE: ${{ github.workspace }}/oe_license.txt
++      PACKAGENAME: yank
++
++    steps:
++      - uses: actions/checkout@v2
++
++      - name: Additional info about the build
++        shell: bash
++        run: |
++          uname -a
++          df -h
++          ulimit -a
++
++      # More info on options: https://github.com/conda-incubator/setup-miniconda
++      - uses: conda-incubator/setup-miniconda@v2
++        with:
++          python-version: ${{ matrix.cfg.python-version }}
++          environment-file: devtools/conda-envs/test_env.yaml
++          activate-environment: test
++          auto-update-conda: true
++          auto-activate-base: false
++          show-channel-urls: true
++
++      - name: Refine test environment
++        shell: bash -l {0}
++        run: |
++          case ${{ matrix.cfg.openmm }} in
++            latest)
++              echo "Using latest release OpenMM."
++              conda install --quiet -c omnia openmm;;
++            rc)
++              echo "Using OpenMM rc"
++              conda install --quiet -c omnia/label/rc openmm;;
++            beta)
++              echo "Using OpenMM beta"
++              conda install --quiet -c omnia/label/beta openmm;;
++            nightly)
++              echo "Using OpenMM nightly dev build."
++              conda install --quiet -c omnia-dev openmm;;
++            conda-forge)
++              echo "Using OpenMM conda-forge testing build."
++              conda install --quiet -c conda-forge/label/test openmm;;
++          esac
++
++      - name: Install package
++        shell: bash -l {0}
++        run: |
++          python -m pip install --no-deps -v .
++
++      - name: Environment Information
++        shell: bash -l {0}
++        run: |
++          conda info -a
++          conda list
++
++      - name: Decrypt licenses
++        # TODO: MODELLER
++        shell: bash -l {0}
++        env:
++          OE_LICENSE_TEXT: ${{ secrets.OE_LICENSE }}
++        run: |
++          echo "${OE_LICENSE_TEXT}" > ${OE_LICENSE}
++          python -c "import openeye; assert openeye.oechem.OEChemIsLicensed(), 'OpenEye license checks failed!'"
++
++      - name: Test the package
++        shell: bash -l {0}
++        run: |
++          export OE_LICENSE="$HOME/oe_license.txt"
++          export TRAVIS=true
++          pushd .
++          nosetests ${PACKAGENAME} --nocapture --with-coverage --verbosity=3 --with-timer -a '!slow' --cover-xml --cover-xml-file=./coverage.xml
++          popd
++
++      - name: Codecov
++        uses: codecov/codecov-action@v1
++        with:
++          file: ./coverage.xml
++          fail_ci_if_error: false
++
++      - name: Build docs
++        shell: bash -l {0}
++        if: matrix.cfg.docs
++        run: |
++          cd docs && make html; cd ..
++          # Move the docs into a versioned subdirectory
++          python devtools/travis-ci/set_doc_version.py
++          # Prepare versions.json
++          python devtools/travis-ci/update_versions_json.py
+diff --git a/README.md b/README.md
+index 02272104..cc717fcf 100644
+--- a/README.md
++++ b/README.md
+@@ -1,3 +1,4 @@
++[![GH Actions Status](https://github.com/choderalab/perses/workflows/CI/badge.svg)](https://github.com/choderalab/perses/actions?query=branch%3Amaster)
+ [![Travis Build Status](https://travis-ci.org/choderalab/yank.png)](https://travis-ci.org/choderalab/yank)
+ [![Anaconda Cloud Badge](https://anaconda.org/omnia/yank/badges/version.svg)](https://anaconda.org/omnia/yank)
+ [![Anaconda Cloud Downloads](https://anaconda.org/omnia/yank/badges/downloads.svg)](https://anaconda.org/omnia/yank)
+diff --git a/Yank/__init__.py b/Yank/__init__.py
+index 3bce4bef..92c81ce9 100644
+--- a/Yank/__init__.py
++++ b/Yank/__init__.py
+@@ -6,7 +6,20 @@
+ """
+ 
+ # Define global version.
+-from . import version  # Needed for yank 3.X.
++try:
++    from . import version  # Needed for yank 3.X.
++except:
++    # Fill in information manually.
++    class _Version:
++        short_version = "dev"
++        version = "dev"
++        full_version = "dev"
++        git_revision = "dev"
++        release = False
++
++    version = _Version()
++
++__version__ = version.version
+ 
+ # Self module imports
+ from . import utils
+@@ -14,5 +27,3 @@
+ from . import pipeline
+ from . import experiment
+ from .yank import Topography, AlchemicalPhase
+-
+-__version__ = version.version
+diff --git a/devtools/conda-envs/test_env.yaml b/devtools/conda-envs/test_env.yaml
+new file mode 100644
+index 00000000..a78abaab
+--- /dev/null
++++ b/devtools/conda-envs/test_env.yaml
+@@ -0,0 +1,42 @@
++name: test
++channels:
++  - conda-forge
++  - defaults
++  - omnia
++  - openeye
++  - salilab
++dependencies:
++  - compilers
++  - python
++  - pip
++  - pandas
++  - numpy >=1.14
++  - scipy
++  - openmm >=7.3
++  - mdtraj >=1.7.2
++  - openmmtools >=0.18.3
++  - pymbar
++  - ambermini >=16.16.0
++  - docopt
++  - openmoltools >=0.7.5
++  - mpiplus
++  - pyyaml
++  - clusterutils
++  - sphinxcontrib-bibtex
++  - cerberus ==1.1 # yank uses buggy cerberus 1.1 behavior as a feature ¯\_(ツ)_/¯
++  - matplotlib
++  - jupyter
++  - pdbfixer
++  - openeye-toolkits
++  - modeller
++  # test
++  - nose
++  - nose-timer
++  - coverage
++  # docs
++  - sphinx
++  - sphinx_rtd_theme
++  - jinja2
++  - runipy
++  - pip:
++      - msmb_theme
+\ No newline at end of file

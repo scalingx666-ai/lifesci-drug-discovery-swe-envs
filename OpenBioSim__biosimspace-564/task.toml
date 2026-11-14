@@ -1,0 +1,67 @@
+version = "1.0"
+
+[task]
+name = "default/OpenBioSim__biosimspace-564"
+description = "Build for Python 3.12-3.14 and drop 3.10 and 3.11"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "biosimspace",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "OpenBioSim/biosimspace"
+ref = "03886d6e96b88df2f491392220bf195eb814f338"
+reference = "https://github.com/OpenBioSim/biosimspace/pull/564"
+source_access = "auto"
+built_at = "2026-11-14T05:57:57.132258+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:32fd948779150f74199c884b7afd67b4ec34e4308b4ef0bafbbb133d7ffda7e9"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-09T19:56:32Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/devel.yaml",
+    ".github/workflows/main.yaml",
+    ".github/workflows/pr.yaml",
+    "pixi.toml",
+    "pyproject.toml",
+    "recipes/biosimspace/recipe.yaml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 44
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

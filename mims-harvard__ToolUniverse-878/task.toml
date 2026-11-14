@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/mims-harvard__ToolUniverse-878"
+description = "Two READMEs disagreed about how many skills exist, and both were wrong"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "ToolUniverse",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "mims-harvard/ToolUniverse"
+ref = "996970f3b6dfb0d7323c783d31bbc09fb0b7e3e1"
+reference = "https://github.com/mims-harvard/ToolUniverse/pull/878"
+source_access = "auto"
+built_at = "2026-11-14T05:59:29.535457+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:6b062e57ebd2624f7af052d81b635271b8a2173818f6b78885444fdcd11e1bce"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-14T02:20:17Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "skills/README.md",
+    "tests/unit/test_skill_readmes_count_what_exists.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 495
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

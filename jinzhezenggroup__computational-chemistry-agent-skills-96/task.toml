@@ -1,0 +1,73 @@
+version = "1.0"
+
+[task]
+name = "default/jinzhezenggroup__computational-chemistry-agent-skills-96"
+description = "chore(sync): update synced directories"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "computational-chemistry-agent-skills",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "jinzhezenggroup/computational-chemistry-agent-skills"
+ref = "d95de0f82c3efb079be5d6a15a810396ebf269ef"
+reference = "https://github.com/jinzhezenggroup/computational-chemistry-agent-skills/pull/96"
+source_access = "auto"
+built_at = "2026-11-14T06:04:57.387281+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:090c409d34b45accede431db54aaeb03886891c0c235a929e6c1d65e389fa237"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-21T12:39:09Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "machine-learning-potentials/dpgen-simplify/SKILL.md",
+    "machine-learning-potentials/dpgen-simplify/assets/machine.template.json",
+    "machine-learning-potentials/dpgen-simplify/assets/machine.template.local-shell.json",
+    "machine-learning-potentials/dpgen-simplify/assets/machine.template.server-local-slurm.json",
+    "machine-learning-potentials/dpgen-simplify/assets/machine.template.ssh-remote-slurm.json",
+    "machine-learning-potentials/dpgen-simplify/assets/param.example.qm7.from-official-docs.json",
+    "machine-learning-potentials/dpgen-simplify/assets/param.template.json",
+    "machine-learning-potentials/dpgen-simplify/references/machine-fields.md",
+    "machine-learning-potentials/dpgen-simplify/references/workflow-notes.md",
+    "sync-state.toml",
+    "tools/dpdisp-submit/SKILL.md",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 252
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

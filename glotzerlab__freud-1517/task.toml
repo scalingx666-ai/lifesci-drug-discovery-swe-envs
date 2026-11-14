@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/glotzerlab__freud-1517"
+description = "Update dependency prefix-dev/pixi to v0.84.2"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "freud",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "glotzerlab/freud"
+ref = "07b22d6a9c7a9b1a1c6a846e3b1e7f241c4f63dd"
+reference = "https://github.com/glotzerlab/freud/pull/1517"
+source_access = "auto"
+built_at = "2026-11-14T05:55:22.438074+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:b3384c31f5d420fe4045384c14471aa7d0553c6f2e017f40477e31e801f9d82f"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-11T23:31:59Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/style.yaml",
+    ".github/workflows/test.yaml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 4
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

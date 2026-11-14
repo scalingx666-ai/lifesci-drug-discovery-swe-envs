@@ -1,0 +1,72 @@
+version = "1.0"
+
+[task]
+name = "default/mims-harvard__ToolUniverse-879"
+description = "Three silent failures reported this month: a key check that always passed, a server that said nothing, and a zero that meant the opposite"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "ToolUniverse",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "mims-harvard/ToolUniverse"
+ref = "996970f3b6dfb0d7323c783d31bbc09fb0b7e3e1"
+reference = "https://github.com/mims-harvard/ToolUniverse/pull/879"
+source_access = "auto"
+built_at = "2026-11-14T05:59:27.890467+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:0a62691c4bd5a3d1b9c7b3df12e2943dd92d3ad7e01de27cfde0b8147a7659b4"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-14T02:20:35Z"
+diff_format = "unified"
+context_files = [
+    "docs/guide/api_keys.rst",
+    "docs/guide/finding_tools.rst",
+    "docs/guide/literature_search_tools_tutorial.rst",
+    "src/tooluniverse/ctg_tool.py",
+    "src/tooluniverse/data/clinicaltrials_gov_tools.json",
+    "src/tooluniverse/smcp.py",
+    "src/tooluniverse/tools/.tool_metadata.json",
+    "src/tooluniverse/tools/ClinicalTrials_search_studies.py",
+    "tests/unit/test_ctg_empty_term_query_says_why.py",
+    "tests/unit/test_docs_read_the_result_envelope.py",
+    "tests/unit/test_smcp_says_what_it_is_for.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 607
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

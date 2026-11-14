@@ -1,0 +1,50 @@
+diff --git a/apps/desktop/package.json b/apps/desktop/package.json
+index ad00ba29..2d4126bc 100644
+--- a/apps/desktop/package.json
++++ b/apps/desktop/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "@claude-prism/desktop",
+-  "version": "1.1.8",
++  "version": "1.2.0",
+   "private": true,
+   "type": "module",
+   "scripts": {
+diff --git a/apps/desktop/src-tauri/Cargo.toml b/apps/desktop/src-tauri/Cargo.toml
+index d6be3451..8b659efe 100644
+--- a/apps/desktop/src-tauri/Cargo.toml
++++ b/apps/desktop/src-tauri/Cargo.toml
+@@ -1,6 +1,6 @@
+ [package]
+ name = "claude-prism-desktop"
+-version = "1.1.8"
++version = "1.2.0"
+ description = "AI-powered LaTeX writing workspace"
+ edition = "2021"
+ 
+diff --git a/apps/desktop/src-tauri/tauri.conf.json b/apps/desktop/src-tauri/tauri.conf.json
+index 5769658f..1f24def3 100644
+--- a/apps/desktop/src-tauri/tauri.conf.json
++++ b/apps/desktop/src-tauri/tauri.conf.json
+@@ -2,7 +2,7 @@
+   "$schema": "https://raw.githubusercontent.com/nicegui-unofficial/nicegui-tauri-template/main/src-tauri/tauri.conf-v2-schema.json",
+   "identifier": "com.claude-prism.desktop",
+   "productName": "ClaudePrism",
+-  "version": "1.1.8",
++  "version": "1.2.0",
+   "build": {
+     "beforeDevCommand": "pnpm dev",
+     "beforeBuildCommand": "pnpm build",
+diff --git a/package.json b/package.json
+index bc4a1265..50181ee6 100644
+--- a/package.json
++++ b/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "@claude-prism/root",
+   "description": "Open-Source AI LaTeX writing workspace",
+-  "version": "1.1.8",
++  "version": "1.2.0",
+   "repository": {
+     "type": "git",
+     "url": "https://github.com/delibae/claude-prism"

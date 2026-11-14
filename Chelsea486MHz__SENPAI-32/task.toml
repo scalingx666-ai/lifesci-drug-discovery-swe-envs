@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/Chelsea486MHz__SENPAI-32"
+description = "Makefile"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "SENPAI",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Chelsea486MHz/SENPAI"
+ref = "4965aee20e169e6c87c944805f0bbbd77395622f"
+reference = "https://github.com/Chelsea486MHz/SENPAI/pull/32"
+source_access = "auto"
+built_at = "2026-11-14T05:58:56.143919+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:279b5d97877a31e2a906d9ab409f2806e7f7da880e671665e599257d422a0da5"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2021-07-25T20:27:58Z"
+diff_format = "unified"
+context_files = [
+    "Makefile",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 34
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

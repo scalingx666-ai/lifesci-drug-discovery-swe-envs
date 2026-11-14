@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/zadorlab__sella-87"
+description = "Fix constrained IRC convergence checks"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "sella",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "zadorlab/sella"
+ref = "6bacb9bd45bebade598a28131ed4b6e4968bddce"
+reference = "https://github.com/zadorlab/sella/pull/87"
+source_access = "auto"
+built_at = "2026-11-14T07:19:11.315068+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:69b0fc22ecae2cccd8dd03ce965ae330184e97d4f5fd1a30fa8af11cd41df2f6"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-08-30T07:23:31Z"
+diff_format = "unified"
+context_files = [
+    "sella/optimize/irc.py",
+    "tests/test_irc.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 69
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

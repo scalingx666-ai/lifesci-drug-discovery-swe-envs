@@ -1,0 +1,26 @@
+diff --git a/.github/workflows/style.yaml b/.github/workflows/style.yaml
+index 4260e0dec..c56836690 100644
+--- a/.github/workflows/style.yaml
++++ b/.github/workflows/style.yaml
+@@ -29,7 +29,7 @@ jobs:
+       - name: Create Python Environment
+         uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+         with:
+-          pixi-version: v0.83.0
++          pixi-version: v0.84.1
+           cache: false
+           environments: py313
+           activate-environment: true
+diff --git a/.github/workflows/test.yaml b/.github/workflows/test.yaml
+index 9ab3e1265..3952325cd 100644
+--- a/.github/workflows/test.yaml
++++ b/.github/workflows/test.yaml
+@@ -50,7 +50,7 @@ jobs:
+       - name: Create Python Environment
+         uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+         with:
+-          pixi-version: v0.83.0
++          pixi-version: v0.84.1
+           cache: false
+           environments: py${{ matrix.python }}
+           activate-environment: true

@@ -1,0 +1,72 @@
+version = "1.0"
+
+[task]
+name = "default/SMTG-Bham__doped-161"
+description = "Add GPAW competing-phase output parsing for chemical potentials"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "doped",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "SMTG-Bham/doped"
+ref = "7752f9f33d54059c921a080c725f04cd3f076398"
+reference = "https://github.com/SMTG-Bham/doped/pull/161"
+source_access = "auto"
+built_at = "2026-11-14T06:02:38.660023+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:7715c393a1ffe7eca84b9726e61b2c1d8e35b667fbf9066b463737a6215b414a"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-01T15:35:07Z"
+diff_format = "unified"
+context_files = [
+    "docs/Adding_Calculators.rst",
+    "docs/GPAW_Support.rst",
+    "doped/chemical_potentials.py",
+    "doped/io/gpaw/outputs.py",
+    "doped/io/utils.py",
+    "doped/io/vasp/outputs.py",
+    "doped/parsing.py",
+    "examples/MgO_with_GPAW/Run1st_create_gpaw_workflow.py",
+    "examples/MgO_with_GPAW/Run2nd_run_and_analyze.py",
+    "tests/test_chemical_potentials.py",
+    "tests/test_gpaw.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1150
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

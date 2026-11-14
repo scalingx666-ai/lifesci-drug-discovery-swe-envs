@@ -1,0 +1,837 @@
+diff --git a/docs/guide/api_keys.rst b/docs/guide/api_keys.rst
+index 78146aaa5..439d81199 100644
+--- a/docs/guide/api_keys.rst
++++ b/docs/guide/api_keys.rst
+@@ -519,14 +519,14 @@ Test your API key configuration:
+            "limit": 5
+        }
+    })
+-   print("PubMed test:", "success" if len(result) > 0 else "failed")
++   print("PubMed test:", "success" if result.get("status") == "success" else "failed")
+ 
+    # Test OpenTargets (no API key needed - public API)
+    result = tu.run({
+        "name": "OpenTargets_get_associated_targets_by_disease_efoId",
+        "arguments": {"efoId": "MONDO_0008383"}  # Rheumatoid arthritis
+    })
+-   print("OpenTargets test:", "success" if len(result) > 0 else "failed")
++   print("OpenTargets test:", "success" if result.get("status") == "success" else "failed")
+ 
+ Troubleshooting
+ ---------------
+diff --git a/docs/guide/finding_tools.rst b/docs/guide/finding_tools.rst
+index f2fb24c5c..2688f6dc5 100644
+--- a/docs/guide/finding_tools.rst
++++ b/docs/guide/finding_tools.rst
+@@ -449,7 +449,7 @@ Measure and compare performance:
+            end_time = time.time()
+ 
+            times.append(end_time - start_time)
+-           total_results += len(result)
++           total_results += len(result.get("data") or [])
+ 
+        avg_time = sum(times) / len(times)
+        return avg_time, total_results
+diff --git a/docs/guide/literature_search_tools_tutorial.rst b/docs/guide/literature_search_tools_tutorial.rst
+index 3937bcc31..a465969be 100644
+--- a/docs/guide/literature_search_tools_tutorial.rst
++++ b/docs/guide/literature_search_tools_tutorial.rst
+@@ -173,10 +173,11 @@ All literature search tools follow a similar usage pattern:
+         }
+     })
+ 
+-    # Check if results were found
+-    if isinstance(result, list) and len(result) > 0:
+-        print(f"Found {len(result)} results")
+-        for i, paper in enumerate(result, 1):
++    # A tool call returns {"status", "data", "metadata"}; the papers are in "data".
++    papers = result.get("data") or []
++    if result.get("status") == "success" and papers:
++        print(f"Found {len(papers)} results")
++        for i, paper in enumerate(papers, 1):
+             print(f"{i}. {paper.get('title', 'No title')}")
+             print(f"   Authors: {', '.join(paper.get('authors', [])[:3])}")
+             print(f"   Year: {paper.get('year', 'Unknown')}")
+@@ -427,7 +428,7 @@ Search across multiple databases for comprehensive results:
+         "name": tool_name,
+         "arguments": {"query": query, "limit": max_results}
+                 })
+-                results[db_name] = result if isinstance(result, list) else []
++                results[db_name] = result.get("data") or []
+             except Exception as e:
+                 print(f"Error searching {db_name}: {e}")
+                 results[db_name] = []
+@@ -494,9 +495,10 @@ Always include proper error handling for robust applications:
+             "arguments": arguments
+             })
+         
+-            if isinstance(result, list):
+-                return {"success": True, "data": result, "count": len(result)}
+-            elif isinstance(result, dict) and "error" in result:
++            if result.get("status") == "success":
++                papers = result.get("data") or []
++                return {"success": True, "data": papers, "count": len(papers)}
++            elif "error" in result:
+                 return {"success": False, "error": result["error"]}
+             else:
+                 return {"success": False, "error": "Unexpected result format"}
+@@ -612,12 +614,13 @@ Here's a complete example that demonstrates searching across multiple literature
+         "arguments": tool["args"]
+                 })
+             
+-                if isinstance(result, list) and len(result) > 0:
+-                    print(f"✅ Found {len(result)} results")
+-                    all_results.extend(result)
++                papers = result.get("data") or []
++                if result.get("status") == "success" and papers:
++                    print(f"✅ Found {len(papers)} results")
++                    all_results.extend(papers)
+         
+                     # Show first result
+-                    first_paper = result[0]
++                    first_paper = papers[0]
+                     print(f"📄 Sample: {first_paper.get('title', 'No title')[:60]}...")
+                 else:
+                     print(f"❌ No results or error: {result}")
+@@ -987,8 +990,9 @@ Here are examples showing the enhanced features of the optimized tools:
+         }
+     })
+     
+-    if isinstance(result, list) and result:
+-        paper = result[0]
++    papers = result.get("data") or []
++    if papers:
++        paper = papers[0]
+         print(f"Title: {paper.get('title')}")
+         print(f"Authors: {paper.get('authors')}")
+         print(f"Journal: {paper.get('journal')}")
+@@ -1011,8 +1015,9 @@ Here are examples showing the enhanced features of the optimized tools:
+         }
+     })
+     
+-    if isinstance(result, list) and result:
+-        paper = result[0]
++    papers = result.get("data") or []
++    if papers:
++        paper = papers[0]
+         print(f"Title: {paper.get('title')}")
+         print(f"Abstract: {paper.get('abstract')[:200]}...")
+         print(f"Authors: {paper.get('authors')}")
+@@ -1033,8 +1038,9 @@ Here are examples showing the enhanced features of the optimized tools:
+         }
+     })
+     
+-    if isinstance(result, list) and result:
+-        paper = result[0]
++    papers = result.get("data") or []
++    if papers:
++        paper = papers[0]
+         print(f"Title: {paper.get('title')}")
+         print(f"Abstract: {paper.get('abstract')}")
+         print(f"Journal: {paper.get('journal')}")
+@@ -1053,8 +1059,9 @@ Here are examples showing the enhanced features of the optimized tools:
+         }
+     })
+     
+-    if isinstance(result, list) and result:
+-        paper = result[0]
++    papers = result.get("data") or []
++    if papers:
++        paper = papers[0]
+         print(f"Title: {paper.get('title')}")
+         print(f"Clean Abstract: {paper.get('abstract')}")
+         print(f"Authors: {paper.get('authors')}")
+@@ -1099,5 +1106,6 @@ Here are examples showing the enhanced features of the optimized tools:
+         }
+     })
+     
+-    if isinstance(result, list):
+-        analyze_data_quality(result)
++    papers = result.get("data") or []
++    if papers:
++        analyze_data_quality(papers)
+diff --git a/src/tooluniverse/ctg_tool.py b/src/tooluniverse/ctg_tool.py
+index e144faea6..a8059c625 100644
+--- a/src/tooluniverse/ctg_tool.py
++++ b/src/tooluniverse/ctg_tool.py
+@@ -95,6 +95,81 @@ def _describe_rewrite(parameter, api_field, submitted, executed, areas=()):
+     }
+ 
+ 
++# Issue #870: query.term ANDs its words against the indexed record text, and
++# nothing in the response says so. An agent that writes the obvious descriptive
++# query -- the acronym plus the drug, the indication and the line of therapy --
++# gets back zero studies with status success, which reads as "no such trial
++# exists". Measured: query_term='KEYNOTE-045' returns NCT02256436, the trial;
++# query_term='KEYNOTE-045 pembrolizumab urothelial carcinoma second-line
++# platinum' returns 0, although every word of it is true of that trial. The
++# metadata made it worse by declaring total_results_is_exact on the zero.
++#
++# Same answer as the rewrite hazard above: disclose, do not substitute. The
++# caller asked for all of those words and still gets exactly what they matched.
++_TERM_PROBE_MIN_WORDS = 3
++
++
++def _term_match_check(params, fetch_total_count):
++    """Say whether a many-worded term query came back empty because of the AND.
++
++    Issued only after an empty result, so the common path pays nothing, and
++    only for a plain value: anything already carrying Essie syntax is the
++    caller driving the query language on purpose.
++    """
++    submitted = params.get("query.term")
++    if not isinstance(submitted, str):
++        return None
++    words = submitted.split()
++    if len(words) < _TERM_PROBE_MIN_WORDS or _ESSIE_OPERATOR_RE.search(submitted):
++        return None
++
++    relaxed = " OR ".join(words)
++    probe = dict(params)
++    probe["query.term"] = relaxed
++    probe["pageSize"] = 1
++    probe["countTotal"] = "true"
++    probe["fields"] = "NCTId"
++    probe.pop("pageToken", None)
++
++    try:
++        total = fetch_total_count(probe)
++        failure = None if total is not None else "it returned no usable response"
++    except Exception as exc:  # transport, HTTP or decode failure
++        total, failure = None, f"{type(exc).__name__}: {exc}"
++
++    check = {
++        "submitted": submitted,
++        "terms_are_combined_with": "AND",
++        "relaxed_query": relaxed,
++    }
++    if failure is not None:
++        check["note"] = (
++            "query.term requires EVERY word to appear in the indexed record "
++            "text, so this empty result may mean the query is too specific "
++            "rather than that no such trial exists. The check that would have "
++            "counted the looser wording could not be made: " + failure
++        )
++        return check
++
++    check["studies_matching_any_term"] = total
++    if total:
++        check["note"] = (
++            f"Zero studies contain all {len(words)} of these words, but {total} "
++            "contain at least one, so this is a query that is too specific "
++            "rather than an absence of trials. query.term combines its words "
++            "with AND against the indexed record text. Search on the most "
++            "distinctive term alone -- an NCT id, a trial acronym or a single "
++            "drug name -- or pass Essie syntax such as "
++            f"'{relaxed}' to widen it."
++        )
++    else:
++        check["note"] = (
++            "No study matches even one of these words, so the empty result is "
++            "not an artefact of combining them with AND."
++        )
++    return check
++
++
+ def _relaxed_match_check(params, rewrites, fetch_total_count):
+     """Ask ClinicalTrials.gov whether the caller's original wording would have
+     matched, so an empty result set becomes self-diagnosing.
+@@ -458,10 +533,14 @@ def _attach_disclosure(self, result_data, params, query_rewrites):
+         """
+         result_data["executed_query"] = _executed_query(params)
+         result_data["query_rewrites"] = query_rewrites
+-        if not result_data.get("studies") and query_rewrites:
+-            result_data["relaxed_match_check"] = _relaxed_match_check(
+-                params, query_rewrites, self._fetch_total_count
+-            )
++        if not result_data.get("studies"):
++            if query_rewrites:
++                result_data["relaxed_match_check"] = _relaxed_match_check(
++                    params, query_rewrites, self._fetch_total_count
++                )
++            term_check = _term_match_check(params, self._fetch_total_count)
++            if term_check is not None:
++                result_data["term_match_check"] = term_check
+         return result_data
+ 
+     def _run_search(self, arguments):
+diff --git a/src/tooluniverse/data/clinicaltrials_gov_tools.json b/src/tooluniverse/data/clinicaltrials_gov_tools.json
+index 64d897766..5711d2cac 100644
+--- a/src/tooluniverse/data/clinicaltrials_gov_tools.json
++++ b/src/tooluniverse/data/clinicaltrials_gov_tools.json
+@@ -16,7 +16,7 @@
+         },
+         "query_term": {
+           "type": "string",
+-          "description": "Query for 'other terms' with Essie expression syntax (e.g., 'combination', 'AREA[LastUpdatePostDate]RANGE[2023-01-15,MAX]', 'Phase II'). Can be used to search for all other protocol fields, including but not limited to title, outcome measures, status, phase, location, etc."
++          "description": "Query for 'other terms' with Essie expression syntax (e.g., 'combination', 'AREA[LastUpdatePostDate]RANGE[2023-01-15,MAX]', 'Phase II'). Can be used to search for all other protocol fields, including but not limited to title, outcome measures, status, phase, location, etc. Words are combined with AND against the indexed record text, so every word must appear somewhere in the record. A descriptive multi-word query therefore returns ZERO studies rather than a ranked list: 'KEYNOTE-045' finds NCT02256436, while 'KEYNOTE-045 pembrolizumab urothelial carcinoma second-line platinum' finds nothing, although every word of it is true of that trial. Search on the most distinctive term alone -- an NCT id, a trial acronym or one drug name -- and narrow with the dedicated condition/intervention/status parameters, or pass Essie syntax ('a OR b') to widen. When a many-worded query returns nothing, the response carries `term_match_check`, which counts how many studies match any one of the words and so tells a too-specific query apart from an absence of trials."
+         },
+         "pageSize": {
+           "type": "integer",
+@@ -187,6 +187,35 @@
+                   "description": "Plain-language reading of the check, naming the escape hatch when the zero is an artifact of the rewrite."
+                 }
+               }
++            },
++            "term_match_check": {
++              "type": "object",
++              "description": "Present ONLY when a plain multi-word `query_term` returned zero studies. query.term combines its words with AND, so an empty result may mean the query was too specific rather than that no such trial exists. The looser results are never substituted for the ones you asked for -- follow `note`.",
++              "properties": {
++                "submitted": {
++                  "type": "string",
++                  "description": "The query_term you sent."
++                },
++                "terms_are_combined_with": {
++                  "type": "string",
++                  "description": "Always 'AND'; stated so the empty result is readable."
++                },
++                "relaxed_query": {
++                  "type": "string",
++                  "description": "The same words combined with OR, used for the count below."
++                },
++                "studies_matching_any_term": {
++                  "type": [
++                    "integer",
++                    "null"
++                  ],
++                  "description": "Studies matching at least one word. A large number beside zero studies means the AND was the cause. Zero means the words match nothing at all, so the empty result is genuine. Null if the check request failed, and `note` says why."
++                },
++                "note": {
++                  "type": "string",
++                  "description": "What the counts mean and how to widen the query."
++                }
++              }
+             }
+           },
+           "required": [
+@@ -1194,7 +1223,7 @@
+             "string",
+             "null"
+           ],
+-          "description": "Free-text search across all study fields. Use for general keyword search."
++          "description": "Free-text search across all study fields. Use for general keyword search. Words are combined with AND against the indexed record text, so every word must appear somewhere in the record. A descriptive multi-word query therefore returns ZERO studies rather than a ranked list: 'KEYNOTE-045' finds NCT02256436, while 'KEYNOTE-045 pembrolizumab urothelial carcinoma second-line platinum' finds nothing, although every word of it is true of that trial. Search on the most distinctive term alone -- an NCT id, a trial acronym or one drug name -- and narrow with the dedicated condition/intervention/status parameters, or pass Essie syntax ('a OR b') to widen. When a many-worded query returns nothing, the response carries `term_match_check`, which counts how many studies match any one of the words and so tells a too-specific query apart from an absence of trials."
+         },
+         "filter_status": {
+           "type": [
+@@ -1698,6 +1727,35 @@
+                   "description": "Plain-language reading of the check, naming the escape hatch when the zero is an artifact of the rewrite."
+                 }
+               }
++            },
++            "term_match_check": {
++              "type": "object",
++              "description": "Present ONLY when a plain multi-word `query_term` returned zero studies. query.term combines its words with AND, so an empty result may mean the query was too specific rather than that no such trial exists. The looser results are never substituted for the ones you asked for -- follow `note`.",
++              "properties": {
++                "submitted": {
++                  "type": "string",
++                  "description": "The query_term you sent."
++                },
++                "terms_are_combined_with": {
++                  "type": "string",
++                  "description": "Always 'AND'; stated so the empty result is readable."
++                },
++                "relaxed_query": {
++                  "type": "string",
++                  "description": "The same words combined with OR, used for the count below."
++                },
++                "studies_matching_any_term": {
++                  "type": [
++                    "integer",
++                    "null"
++                  ],
++                  "description": "Studies matching at least one word. A large number beside zero studies means the AND was the cause. Zero means the words match nothing at all, so the empty result is genuine. Null if the check request failed, and `note` says why."
++                },
++                "note": {
++                  "type": "string",
++                  "description": "What the counts mean and how to widen the query."
++                }
++              }
+             }
+           },
+           "required": [
+diff --git a/src/tooluniverse/smcp.py b/src/tooluniverse/smcp.py
+index 47a825702..965bb1b63 100644
+--- a/src/tooluniverse/smcp.py
++++ b/src/tooluniverse/smcp.py
+@@ -131,6 +131,7 @@ def _json_default(value: Any) -> Any:
+         return sorted(value, key=str)
+     return str(value)
+ 
++
+ from .execute_function import ToolUniverse
+ from .agentic_tool import render_agentic_instruction
+ from .credentials import ContextThreadPoolExecutor
+@@ -626,6 +627,84 @@ def __init__(
+         # Register custom MCP methods
+         self._register_custom_mcp_methods()
+ 
++        # Tell the host model what this server is for. FastMCP's `instructions`
++        # is the one piece of text an MCP host puts verbatim into the model's
++        # context at session start, and this server never set it (#875). With
++        # deferred tools -- Claude Code lists MCP tools by name only -- the
++        # model otherwise sees `find_tools`, `grep_tools`, `execute_tool` and
++        # nothing that says those names lead to genes, drugs, trials or
++        # variants. A caller-supplied value flows through **kwargs to FastMCP
++        # and is left alone; this is a floor, not a ceiling.
++        if not getattr(self, "instructions", None):
++            try:
++                self.instructions = self._default_instructions()
++            except Exception as exc:  # pragma: no cover - never fail a server start
++                self.logger.debug("Could not derive server instructions: %s", exc)
++
++    def _default_instructions(self) -> str:
++        """Describe this server from what it actually loaded, not from a fixed list.
++
++        Deriving the text keeps it true as the catalogue grows and as a
++        deployment's own category filters narrow it, which a hard-coded
++        paragraph does not.
++        """
++        registered = set(self._exposed_tools)
++        if getattr(self, "_find_tools_registered", False):
++            # find_tools is registered straight onto FastMCP by
++            # _register_search_tools, so it never enters _exposed_tools.
++            registered.add("find_tools")
++        entry_points = [
++            name
++            for name in (
++                "find_tools",
++                "list_tools",
++                "grep_tools",
++                "get_tool_info",
++                "execute_tool",
++            )
++            if name in registered
++        ]
++        # compact_mode and tool_finder are this server's own plumbing, not
++        # subject areas; naming them would tell the model to look for a
++        # "compact_mode" database.
++        plumbing = {"compact_mode", "tool_finder", "special_tools", "mcp_clients"}
++        categories = sorted(
++            str(name)
++            for name, configs in (
++                getattr(self.tooluniverse, "tool_category_dicts", {}) or {}
++            ).items()
++            if configs and str(name) not in plumbing
++        )
++        total = len(getattr(self.tooluniverse, "all_tool_dict", {}) or {})
++
++        lines = []
++        if total:
++            lines.append(
++                f"ToolUniverse exposes {total} scientific and biomedical tools "
++                "through this server."
++            )
++        else:
++            lines.append(
++                "ToolUniverse exposes scientific and biomedical tools through "
++                "this server."
++            )
++        if entry_points:
++            lines.append("Entry points: " + ", ".join(entry_points) + ".")
++            first = "find_tools" if "find_tools" in entry_points else entry_points[0]
++            lines.append(
++                f"Call {first} FIRST for any factual question whose answer lives in a "
++                "scientific or biomedical resource rather than in your own knowledge: "
++                "identifiers, nomenclature, reference sequences, catalogue codes, "
++                "measured values, annotations, approvals, trials and literature."
++            )
++        if categories:
++            shown = categories[:60]
++            text = ", ".join(shown)
++            if len(categories) > len(shown):
++                text += f", and {len(categories) - len(shown)} more"
++            lines.append(f"Subject areas loaded on this server: {text}.")
++        return "\n\n".join(lines)
++
+     def _load_profile_configs(self, profile: Union[str, List[str]]):
+         """
+         Load Profile configurations.
+@@ -1072,7 +1151,9 @@ async def _perform_tool_search(
+                         {"tools": [], "result": result}, ensure_ascii=False
+                     )
+             elif isinstance(result, dict) or isinstance(result, list):
+-                serialized = json.dumps(result, ensure_ascii=False, default=_json_default)
++                serialized = json.dumps(
++                    result, ensure_ascii=False, default=_json_default
++                )
+             else:
+                 serialized = json.dumps(
+                     {"tools": [], "result": str(result)}, ensure_ascii=False
+@@ -1517,6 +1598,8 @@ async def find_tools(
+         #     """
+         #     return await self._perform_tool_search(query, categories, limit, use_advanced_search, search_method)
+ 
++        self._find_tools_registered = True
++
+     def _init_tool_finder(self):
+         """Initialize the best available tool finder (LLM > RAG > keyword).
+ 
+@@ -2427,7 +2510,9 @@ def _run_with_stdout_capture():
+                                 {"result": result}, ensure_ascii=False
+                             )
+                     elif isinstance(result, (dict, list)):
+-                        serialized = json.dumps(result, ensure_ascii=False, default=_json_default)
++                        serialized = json.dumps(
++                            result, ensure_ascii=False, default=_json_default
++                        )
+                     else:
+                         # For other types, convert to JSON
+                         serialized = json.dumps(
+diff --git a/src/tooluniverse/tools/.tool_metadata.json b/src/tooluniverse/tools/.tool_metadata.json
+index 0db03494c..cba12ba10 100644
+--- a/src/tooluniverse/tools/.tool_metadata.json
++++ b/src/tooluniverse/tools/.tool_metadata.json
+@@ -285,7 +285,7 @@
+   "ClinicalTrials_get_study": "be9db5940a81ac43cae468b686dd6227",
+   "ClinicalTrials_search_by_intervention": "1fc2296d7594aeb4e3ce29ca24285ec5",
+   "ClinicalTrials_search_by_sponsor": "39f4ffc35ac0591bc129031d81f79bdb",
+-  "ClinicalTrials_search_studies": "ce9e8c33240a32172aefc609f61f69c1",
++  "ClinicalTrials_search_studies": "8f1fb0b8f68ea185d4284df135f6beb2",
+   "CoL_get_children": "d371cb55f092c286367e084b10916550",
+   "CoL_get_taxon": "2a89741aedeb3a3df5bfc10f1e784c91",
+   "CoL_search_species": "ce8ed4a3019393ebec5ca221c3604f2c",
+@@ -2756,7 +2756,7 @@
+   "resolve_identifier_for_gene_or_protein": "493e39421a0ccb3f0f6b6dddf1b062d1",
+   "run_deseq2_analysis": "8dd7d99560ec5109018f0149402ef0dd",
+   "scite_get_tallies": "50e39e80feb11ecbcf788ef18342b51e",
+-  "search_clinical_trials": "5c8e42472e2970ae3d6cec05edac91d3",
++  "search_clinical_trials": "6c2b4a8288f69ee43e6fcd25f40702b4",
+   "snomed_search_concepts": "fa4eaa4a2d4eea36e2127e87cfa01613",
+   "ssGSEA_score": "0e5e8d34abc24b4e5484eda75d56a7f9",
+   "umls_get_concept_details": "4871b0b7b1a9c0bbcaa0ca7b16390d44",
+diff --git a/src/tooluniverse/tools/ClinicalTrials_search_studies.py b/src/tooluniverse/tools/ClinicalTrials_search_studies.py
+index 523bcafc0..bfafa65c9 100644
+--- a/src/tooluniverse/tools/ClinicalTrials_search_studies.py
++++ b/src/tooluniverse/tools/ClinicalTrials_search_studies.py
+@@ -41,7 +41,7 @@ def ClinicalTrials_search_studies(
+     query_intr : str
+         Intervention or drug to search for (e.g., 'pembrolizumab', 'metformin', 'chem...
+     query_term : str
+-        Free-text search across all study fields. Use for general keyword search.
++        Free-text search across all study fields. Use for general keyword search. Wor...
+     filter_status : str
+         Filter by recruitment status. Options: 'RECRUITING', 'NOT_YET_RECRUITING', 'A...
+     filter_phase : str
+diff --git a/tests/unit/test_ctg_empty_term_query_says_why.py b/tests/unit/test_ctg_empty_term_query_says_why.py
+new file mode 100644
+index 000000000..4162fc06e
+--- /dev/null
++++ b/tests/unit/test_ctg_empty_term_query_says_why.py
+@@ -0,0 +1,115 @@
++"""An over-specified query_term returns zero studies, and must say why.
++
++Filed as #870. ClinicalTrials.gov combines the words of `query.term` with AND
++against the indexed record text, so a descriptive query -- the normal thing an
++agent writes, an acronym plus the drug, the indication and the line of therapy
++-- comes back as zero studies with status success. That is indistinguishable
++from "no such trial exists", and the metadata made it worse by declaring
++`total_results_is_exact` on the zero.
++
++Measured 2026-11-13:
++
++    query_term="KEYNOTE-045"                                   -> 1 study,
++                                                                  NCT02256436
++    query_term="KEYNOTE-045 pembrolizumab urothelial carcinoma
++                second-line platinum"                          -> 0 studies
++
++Every word of the second is true of that trial. 51,291 studies match at least
++one of those words.
++
++The answer follows the one already in this module for rewritten queries:
++disclose, never substitute. The caller asked for all of those words and still
++gets exactly what they matched; what changes is that the zero now carries the
++count for the OR'd wording beside it.
++
++The diagnostic has to be able to come back negative, or it is decoration: a
++query of nonsense words must say the AND was NOT the cause.
++"""
++
++import pytest
++
++from tooluniverse.ctg_tool import _ESSIE_OPERATOR_RE, _term_match_check
++
++
++def _never_called(_probe):
++    raise AssertionError("no probe should be issued for this input")
++
++
++def _counting(total):
++    def fetch(probe):
++        fetch.seen = probe
++        return total
++
++    fetch.seen = None
++    return fetch
++
++
++def test_a_many_worded_query_is_diagnosed():
++    fetch = _counting(51291)
++    check = _term_match_check(
++        {"query.term": "KEYNOTE-045 pembrolizumab urothelial carcinoma platinum"}, fetch
++    )
++    assert check["terms_are_combined_with"] == "AND"
++    assert check["studies_matching_any_term"] == 51291
++    assert " OR " in check["relaxed_query"]
++    assert "too specific" in check["note"]
++
++
++def test_the_probe_is_count_only_and_keeps_every_other_filter():
++    fetch = _counting(7)
++    _term_match_check(
++        {
++            "query.term": "one two three",
++            "filter.overallStatus": "RECRUITING",
++            "pageToken": "abc",
++        },
++        fetch,
++    )
++    probe = fetch.seen
++    assert probe["pageSize"] == 1
++    assert probe["fields"] == "NCTId"
++    assert probe["countTotal"] == "true"
++    assert probe["filter.overallStatus"] == "RECRUITING", (
++        "the two counts are only comparable if every other filter is inherited"
++    )
++    assert "pageToken" not in probe
++
++
++def test_nonsense_words_are_told_apart_from_an_over_specified_query():
++    check = _term_match_check({"query.term": "zzqq wwxx yyvv"}, _counting(0))
++    assert check["studies_matching_any_term"] == 0
++    assert "not an artefact" in check["note"], (
++        "a check that says the same thing whatever the counts carries no information"
++    )
++    assert "too specific" not in check["note"]
++
++
++@pytest.mark.parametrize(
++    "term",
++    ["KEYNOTE-045", "two words", "", None, 42],
++)
++def test_nothing_is_probed_when_there_is_nothing_to_diagnose(term):
++    assert _term_match_check({"query.term": term}, _never_called) is None
++
++
++@pytest.mark.parametrize(
++    "term",
++    [
++        "cancer AND lung AND phase",
++        "AREA[LastUpdatePostDate]RANGE[2023-01-15,MAX] one two",
++        '"exact phrase here"',
++        "(a b c)",
++    ],
++)
++def test_a_caller_driving_essie_syntax_is_left_alone(term):
++    assert _ESSIE_OPERATOR_RE.search(term)
++    assert _term_match_check({"query.term": term}, _never_called) is None
++
++
++def test_a_failed_probe_says_so_rather_than_claiming_a_count():
++    def exploding(_probe):
++        raise TimeoutError("upstream took too long")
++
++    check = _term_match_check({"query.term": "one two three"}, exploding)
++    assert "studies_matching_any_term" not in check
++    assert "TimeoutError" in check["note"]
+diff --git a/tests/unit/test_docs_read_the_result_envelope.py b/tests/unit/test_docs_read_the_result_envelope.py
+new file mode 100644
+index 000000000..0d1e904c0
+--- /dev/null
++++ b/tests/unit/test_docs_read_the_result_envelope.py
+@@ -0,0 +1,103 @@
++"""Documented snippets must read a tool result as {status, data, metadata}.
++
++Filed as #869. A tool call returns the envelope, so a snippet that measures
++the result with len() measures the envelope's three keys, and one that guards
++with isinstance(result, list) never enters its own branch. Both failures are
++silent: nothing raises, and the printed line looks like a result.
++
++Measured on main at the time of writing, with the envelope in force:
++
++    r = tu.run({"name": "PubMed_search_articles", ...})
++    len(r)                 # 3   -- status, data, metadata
++    isinstance(r, list)    # False
++    r["status"]            # "success", even for a query matching nothing
++
++docs/guide/api_keys.rst told a reader to verify their API keys with
++`"success" if len(result) > 0 else "failed"`, which prints success whether or
++not the key works. docs/guide/literature_search_tools_tutorial.rst guarded
++four printing blocks with isinstance(result, list), so none of them could run,
++and its safe_search helper returned "Unexpected result format" for every call
++that succeeded.
++
++This test does not ban a spelling. It reads each code block, finds the names
++bound from tu.run(...), and fails if such a name is then used as a sequence in
++the same block.
++"""
++
++import re
++from pathlib import Path
++
++import pytest
++
++_GUIDE = Path(__file__).resolve().parents[2] / "docs" / "guide"
++
++
++def _code_blocks(text):
++    """Each `.. code-block:: python` body, as a list of lines."""
++    lines = text.splitlines()
++    out, i = [], 0
++    while i < len(lines):
++        if re.match(r"^\s*\.\. code-block:: python\s*$", lines[i]):
++            indent = len(lines[i]) - len(lines[i].lstrip())
++            body, j = [], i + 1
++            while j < len(lines):
++                line = lines[j]
++                if line.strip() and (len(line) - len(line.lstrip())) <= indent:
++                    break
++                body.append(line)
++                j += 1
++            out.append(body)
++            i = j
++        else:
++            i += 1
++    return out
++
++
++def _offences(body):
++    """Names bound from tu.run(...) that are then used as a sequence."""
++    names = set()
++    for line in body:
++        m = re.match(r"\s*(\w+)\s*=\s*tu\.run\(", line)
++        if m:
++            names.add(m.group(1))
++    bad = []
++    for name in sorted(names):
++        for line in body:
++            if re.match(rf"\s*{name}\s*=\s*tu\.run\(", line):
++                continue
++            if re.search(rf"\blen\(\s*{name}\s*\)", line) or re.search(
++                rf"\bisinstance\(\s*{name}\s*,\s*list\s*\)", line
++            ):
++                bad.append(line.strip())
++    return bad
++
++
++def _rst_files():
++    return sorted(_GUIDE.rglob("*.rst"))
++
++
++def test_the_guide_has_code_blocks_to_check():
++    assert any(_code_blocks(f.read_text(encoding="utf-8")) for f in _rst_files())
++
++
++@pytest.mark.parametrize("path", _rst_files(), ids=lambda p: p.name)
++def test_no_snippet_measures_the_envelope(path):
++    found = []
++    for body in _code_blocks(path.read_text(encoding="utf-8")):
++        found.extend(_offences(body))
++    assert not found, (
++        f"{path.name}: a tu.run() result is used as a sequence, which measures "
++        f"the envelope rather than the data: {found}"
++    )
++
++
++def test_the_api_key_check_can_actually_fail():
++    text = (_GUIDE / "api_keys.rst").read_text(encoding="utf-8")
++    checks = re.findall(r'print\("(?:PubMed|OpenTargets) test:".*', text)
++    assert len(checks) == 2, f"expected the two connectivity checks, found {checks}"
++    for line in checks:
++        assert "len(result)" not in line, (
++            "len() on the envelope is 3 whatever happened, so this prints "
++            f"success unconditionally: {line}"
++        )
++        assert 'result.get("status")' in line, line
+diff --git a/tests/unit/test_smcp_says_what_it_is_for.py b/tests/unit/test_smcp_says_what_it_is_for.py
+new file mode 100644
+index 000000000..59ced2966
+--- /dev/null
++++ b/tests/unit/test_smcp_says_what_it_is_for.py
+@@ -0,0 +1,87 @@
++"""The MCP host must be told what this server is for.
++
++Filed as #875. FastMCP's `instructions` is the one piece of text an MCP host
++puts verbatim into the model's context when a session opens. SMCP passed only
++`name`, so that text was empty:
++
++    super().__init__(name=name or "SMCP Server", **fastmcp_kwargs)
++
++and `grep -rn "instructions=" src/tooluniverse/` returned nothing, so no entry
++point supplied one either. With deferred tools -- Claude Code lists MCP tools
++by name only -- the model saw `find_tools`, `grep_tools`, `execute_tool` and
++nothing saying those names lead to genes, drugs, trials or variants.
++
++The text is derived rather than written down, so it stays true as the
++catalogue grows and as a deployment's own category filters narrow it.
++"""
++
++import pytest
++
++from tooluniverse.smcp import SMCP
++
++
++@pytest.fixture(scope="module")
++def server():
++    return SMCP(name="probe", tool_categories=["uniprot"], compact_mode=True)
++
++
++def test_the_host_is_told_something(server):
++    assert server.instructions, "FastMCP instructions is what the host shows the model"
++    assert len(server.instructions) > 80
++
++
++def test_it_names_the_entry_points_that_exist(server):
++    registered = set(server._exposed_tools)
++    if getattr(server, "_find_tools_registered", False):
++        registered.add("find_tools")
++    named = {
++        name
++        for name in (
++            "find_tools",
++            "list_tools",
++            "grep_tools",
++            "get_tool_info",
++            "execute_tool",
++        )
++        if name in server.instructions
++    }
++    assert named, "the instructions name no entry point at all"
++    assert named <= registered, (
++        f"the instructions advertise entry points this server does not register: "
++        f"{sorted(named - registered)}"
++    )
++
++
++def test_it_names_a_subject_area_a_caller_would_search_for(server):
++    assert "uniprot" in server.instructions.lower()
++
++
++def test_it_does_not_offer_this_server_s_plumbing_as_a_subject(server):
++    lowered = server.instructions.lower()
++    for plumbing in ("compact_mode", "tool_finder"):
++        assert plumbing not in lowered, (
++            f"{plumbing} is this server's own machinery, not a database to search"
++        )
++
++
++def test_a_caller_supplied_value_is_left_alone():
++    chosen = "This deployment serves one lab and nothing else."
++    server = SMCP(
++        name="probe",
++        tooluniverse_config={},
++        auto_expose_tools=False,
++        search_enabled=False,
++        instructions=chosen,
++    )
++    assert server.instructions == chosen
++
++
++def test_a_server_with_nothing_loaded_still_says_what_it_is():
++    server = SMCP(
++        name="probe",
++        tooluniverse_config={},
++        auto_expose_tools=False,
++        search_enabled=False,
++    )
++    assert server.instructions
++    assert "tooluniverse" in server.instructions.lower()

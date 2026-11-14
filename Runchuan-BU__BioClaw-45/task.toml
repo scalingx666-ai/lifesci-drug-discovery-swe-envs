@@ -1,0 +1,72 @@
+version = "1.0"
+
+[task]
+name = "default/Runchuan-BU__BioClaw-45"
+description = "local_web 新增 3D 蛋白结构查看器"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "BioClaw",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Runchuan-BU/BioClaw"
+ref = "0373cee30324f49ad9f7c04eeacdbff10317320e"
+reference = "https://github.com/Runchuan-BU/BioClaw/pull/45"
+source_access = "auto"
+built_at = "2026-11-14T06:01:25.284917+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:8ac9eac15443d6e3f88c59a6c51f960ae3da1394acd1bc6215ed60d4bd152828"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-05-02T12:42:37Z"
+diff_format = "unified"
+context_files = [
+    "UPGRADE-V2-UI.md",
+    "container/Dockerfile.viz",
+    "container/agent-runner/src/index.ts",
+    "container/build.sh",
+    "package-lock.json",
+    "package.json",
+    "src/channels/local-web/assets/v2/app.js",
+    "src/channels/local-web/assets/v2/index.html",
+    "src/channels/local-web/assets/v2/style.css",
+    "src/channels/local-web/channel.ts",
+    "src/channels/local-web/vendor-scripts.ts",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1215
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

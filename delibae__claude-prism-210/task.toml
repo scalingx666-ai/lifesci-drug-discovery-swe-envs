@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/delibae__claude-prism-210"
+description = "fix: hide compiled build artifacts from project file tree"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "claude-prism",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "delibae/claude-prism"
+ref = "67dde775ac089dcb6aeb71d2a69e6d47f4526861"
+reference = "https://github.com/delibae/claude-prism/pull/210"
+source_access = "auto"
+built_at = "2026-11-14T05:59:25.347530+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:b0c1a5d805c93837ebe6e2bdb58300372b043a251dbe007b1c7e51e1183a3ea7"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-08-28T10:23:13Z"
+diff_format = "unified"
+context_files = [
+    "apps/desktop/src/__tests__/lib/tauri-fs.test.ts",
+    "apps/desktop/src/lib/tauri/fs.ts",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 20
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

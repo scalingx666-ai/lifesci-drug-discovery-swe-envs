@@ -1,0 +1,1592 @@
+diff --git a/UPGRADE-V2-UI.md b/UPGRADE-V2-UI.md
+index 16907e7..404de0d 100644
+--- a/UPGRADE-V2-UI.md
++++ b/UPGRADE-V2-UI.md
+@@ -4,6 +4,42 @@
+ 
+ ---
+ 
++## V2.1 小更新（2026-05-01）
++
++在 V2 基础上的迭代改进，老用户 `git pull` + 重建容器即可。
++
++### 🧬 3D 蛋白结构查看器（新增）
++
++- 内置 3Dmol 渲染器（本地托管，国内网络也能用）
++- 点击聊天里 agent 返回的 `.pdb` / `.cif` / `.mmcif` / `.mol2` / `.sdf` / `.xyz` 文件 → 右侧抽屉直接 3D 展示
++- Workspace tab 顶部加了 PDB ID 输入框 + 6 个示例芯片（1CRN / 4HHB / 6VXX / 1A3N / 2HHB / 1IGT），输入即拉
++- 渲染功能：6 种风格（卡通 / 棒状 / 球状 / 线条 / 球棍 / 表面）× 5 种配色（彩虹 / 按链 / B 因子 / 残基 / 单色），加自旋 / 深色背景 / 重置 / 截图 / 链残基原子统计
++- 工具条文字跟随中英文切换实时刷新
++- 检测到 agent 写的"假" PDB（缺二级结构 / ATOM 太少 / 全是注释）时，弹提示 + 一键从 RCSB 拉真版本
++
++### 📂 Workspace 抽屉（新增）
++
++- 抽屉顶部加 [推理过程] / [工作目录] tab 切换；工作目录占满整个抽屉，可直接点文件预览
++
++### 🛠 抽屉布局优化
++
++- 右侧边栏整体优化，预览体验更舒服
++
++### 🤖 Agent 行为修复
++
++- **System prompt 加 `[Data integrity]` 段落**：禁止凭记忆构造 PDB / 序列 / 数据集；下载失败必须明确告知用户而不是写假占位文件；PDB 下载完必须验证 ATOM > 100 + END
++- **容器 SSL 证书路径修复**：之前 Python `urllib` / `requests` 因为 OpenSSL 默认找 `/usr/lib/ssl/cert.pem`（不存在）导致 HTTPS 下载全部失败，agent 没办法只能伪造文件。现在通过 `SSL_CERT_FILE` 等环境变量指向实际路径 `/etc/ssl/certs/ca-certificates.crt`，agent 终于能真正 wget RCSB
++
++### 🐛 其他修复
++
++- 文件 URL 大小写不敏感回退（agent 把 `1crn.pdb` 写到磁盘，链接里写 `1CRN.pdb` 也能打开）
++- 页面加载时 trace 按**当前 chat** 过滤，不再串显其他会话的旧事件
++- 欢迎页 "🧬 蛋白 3D 结构" 卡片改为纯 prompt 填充（不再 surprise 自动加载）
++- 3Dmol.js 改为本地托管（`npm install 3dmol`，从 `/vendor/3Dmol-min.js` 服务），国内不依赖外网 CDN
++- `container/build.sh` 现在串行执行基础镜像和 Viz overlay 两个 build，**老/新用户安装升级流程不变**，一条命令把 Python + SSL 修复都盖进去
++
++---
++
+ ## 改动总览
+ 
+ ### 新增文件
+diff --git a/container/Dockerfile.viz b/container/Dockerfile.viz
+index dc783e3..f909d6a 100644
+--- a/container/Dockerfile.viz
++++ b/container/Dockerfile.viz
+@@ -18,6 +18,14 @@ COPY --from=python-stage /usr/lib/x86_64-linux-gnu/ossl-modules /usr/lib/x86_64-
+ COPY --from=python-stage /etc/ssl/certs /etc/ssl/certs
+ COPY --from=python-stage /usr/share/ca-certificates /usr/share/ca-certificates
+ 
++# Python's libssl was built expecting CA certs at /usr/lib/ssl/cert.pem (env-overridable).
++# We have certs at /etc/ssl/certs/ca-certificates.crt (copied above) — point Python's SSL
++# module + any future curl/wget calls there so HTTPS verification works.
++ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
++ENV SSL_CERT_DIR=/etc/ssl/certs
++ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
++ENV CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
++
+ # Rebuild agent-runner with latest source
+ WORKDIR /app
+ COPY agent-runner/ ./
+diff --git a/container/agent-runner/src/index.ts b/container/agent-runner/src/index.ts
+index b98ef0e..2567f52 100644
+--- a/container/agent-runner/src/index.ts
++++ b/container/agent-runner/src/index.ts
+@@ -693,7 +693,9 @@ function buildGlobalSystemPrompt(
+   const workdirBlock = `\n\n[Current working directory]\n${currentWorkdir}\n`;
+   const languageBlock = `\n\n[Language policy]\nDetect the language the user is writing in and reply in the same language. If the user writes in Chinese, reply in Chinese; if in English, reply in English; otherwise mirror their language. This applies to both your final answer and any "send_message" / progress updates. Tool inputs (commands, file paths, code) stay in their natural form (English/code).\n`;
+ 
+-  return bioSystemPrompt + globalContent + agentMemoryBlock + enabledSkillsBlock + routingBlock + workdirBlock + languageBlock;
++  const dataIntegrityBlock = `\n\n[Data integrity — never fabricate scientific files]\nWhen the user asks for a structure file, sequence file, dataset, or any other scientific artifact, you MUST obtain it from a real, verifiable source — never reconstruct it from memory or invent contents.\n\n- PDB / mmCIF / structure files: download from RCSB (\`https://files.rcsb.org/view/{ID}.pdb\` or \`{ID}.cif\`) using curl/wget. Save the response as-is.\n- Sequences (FASTA / GenBank): fetch from NCBI Entrez / UniProt / Ensembl via their HTTP APIs.\n- Datasets / supplementary files: download from the original repository (GEO, ArrayExpress, supplementary URLs).\n\nIf a download fails (network blocked, 404, timeout), STOP and tell the user clearly: which URL you tried, the error you got, and what they can do (e.g. provide the file directly, retry, configure proxy). DO NOT write a placeholder file with a few hand-typed ATOM lines or REMARK summaries pretending to be the real data — this silently breaks downstream tools and looks like a successful download to the user.\n\nVerification rule for PDB downloads: after curl/wget, check the file ends with the line "END" and contains > 100 ATOM records. If not, treat the download as failed and report it.\n`;
++
++  return bioSystemPrompt + globalContent + agentMemoryBlock + enabledSkillsBlock + routingBlock + workdirBlock + languageBlock + dataIntegrityBlock;
+ }
+ 
+ function getSessionSummary(sessionId: string, transcriptPath: string): string | null {
+diff --git a/container/build.sh b/container/build.sh
+index dcf73bc..71c2d47 100755
+--- a/container/build.sh
++++ b/container/build.sh
+@@ -1,5 +1,11 @@
+ #!/bin/bash
+-# Build the BioClaw agent container image
++# Build the BioClaw agent container image.
++#
++# Two-stage build:
++#   1. Base image (Dockerfile)        — bio CLI tools + Node agent runner
++#   2. Viz overlay (Dockerfile.viz)   — Python plotting libs + SSL CA path fix
++#
++# Both are tagged as bioclaw-agent:<tag> at the end.
+ 
+ set -e
+ 
+@@ -9,12 +15,13 @@ cd "$SCRIPT_DIR"
+ IMAGE_NAME="bioclaw-agent"
+ TAG="${1:-latest}"
+ 
+-echo "Building BioClaw agent container image..."
+-echo "Image: ${IMAGE_NAME}:${TAG}"
+-
+-# Build with Docker
++echo "[1/2] Building base image: ${IMAGE_NAME}:${TAG} (Dockerfile)"
+ docker build -t "${IMAGE_NAME}:${TAG}" .
+ 
++echo ""
++echo "[2/2] Overlaying Python + SSL fix: ${IMAGE_NAME}:${TAG} (Dockerfile.viz)"
++docker build -f Dockerfile.viz -t "${IMAGE_NAME}:${TAG}" .
++
+ echo ""
+ echo "Build complete!"
+ echo "Image: ${IMAGE_NAME}:${TAG}"
+diff --git a/package-lock.json b/package-lock.json
+index dbeef6c..7a6b141 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -12,6 +12,7 @@
+         "@slack/bolt": "^4.6.0",
+         "@wecom/aibot-node-sdk": "^1.0.1",
+         "@whiskeysockets/baileys": "^7.0.0-rc.9",
++        "3dmol": "^2.5.4",
+         "better-sqlite3": "^11.8.1",
+         "cron-parser": "^5.5.0",
+         "discord.js": "^14.25.1",
+@@ -2307,6 +2308,22 @@
+         }
+       }
+     },
++    "node_modules/3dmol": {
++      "version": "2.5.4",
++      "resolved": "https://registry.npmjs.org/3dmol/-/3dmol-2.5.4.tgz",
++      "integrity": "sha512-stbHw2c2T12bABmFyBrhJL4tufw+hUjvhmJthOxAxKVDwAtAZSI17Kue8VNxaHewf5oRydPo6W62BlWrbrNa6Q==",
++      "license": "BSD-3-Clause",
++      "dependencies": {
++        "iobuffer": "^5.0.0",
++        "netcdfjs": "^3.0.0",
++        "pako": "^2.1.0",
++        "upng-js": "^2.1.0"
++      },
++      "engines": {
++        "node": ">=16.16.0",
++        "npm": ">=8.11"
++      }
++    },
+     "node_modules/accepts": {
+       "version": "2.0.0",
+       "resolved": "https://registry.npmjs.org/accepts/-/accepts-2.0.0.tgz",
+@@ -3424,6 +3441,12 @@
+       "integrity": "sha512-JV/yugV2uzW5iMRSiZAyDtQd+nxtUnjeLt0acNdw98kKLrvuRVyB80tsREOE7yvGVgalhZ6RNXCmEHkUKBKxew==",
+       "license": "ISC"
+     },
++    "node_modules/iobuffer": {
++      "version": "5.4.0",
++      "resolved": "https://registry.npmjs.org/iobuffer/-/iobuffer-5.4.0.tgz",
++      "integrity": "sha512-DRebOWuqDvxunfkNJAlc3IzWIPD5xVxwUNbHr7xKB8E6aLJxIPfNX3CoMJghcFjpv6RWQsrcJbghtEwSPoJqMA==",
++      "license": "MIT"
++    },
+     "node_modules/ipaddr.js": {
+       "version": "1.9.1",
+       "resolved": "https://registry.npmjs.org/ipaddr.js/-/ipaddr.js-1.9.1.tgz",
+@@ -3913,6 +3936,15 @@
+         "node": ">= 0.6"
+       }
+     },
++    "node_modules/netcdfjs": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmjs.org/netcdfjs/-/netcdfjs-3.0.0.tgz",
++      "integrity": "sha512-LOvT8KkC308qtpUkcBPiCMBtii7ZQCN6LxcVheWgyUeZ6DQWcpSRFV9dcVXLj/2eHZ/bre9tV5HTH4Sf93vrFw==",
++      "license": "MIT",
++      "dependencies": {
++        "iobuffer": "^5.3.2"
++      }
++    },
+     "node_modules/node-abi": {
+       "version": "3.87.0",
+       "resolved": "https://registry.npmjs.org/node-abi/-/node-abi-3.87.0.tgz",
+@@ -4028,6 +4060,12 @@
+         "url": "https://github.com/sponsors/sindresorhus"
+       }
+     },
++    "node_modules/pako": {
++      "version": "2.1.0",
++      "resolved": "https://registry.npmjs.org/pako/-/pako-2.1.0.tgz",
++      "integrity": "sha512-w+eufiZ1WuJYgPXbV/PO3NCMEc3xqylkKHzp8bxp1uW4qaSNQUkwmLLEc3kKsfz8lpV1F8Ht3U1Cm+9Srog2ug==",
++      "license": "(MIT AND Zlib)"
++    },
+     "node_modules/parseurl": {
+       "version": "1.3.3",
+       "resolved": "https://registry.npmjs.org/parseurl/-/parseurl-1.3.3.tgz",
+@@ -5135,6 +5173,21 @@
+         "node": ">= 0.8"
+       }
+     },
++    "node_modules/upng-js": {
++      "version": "2.1.0",
++      "resolved": "https://registry.npmjs.org/upng-js/-/upng-js-2.1.0.tgz",
++      "integrity": "sha512-d3xzZzpMP64YkjP5pr8gNyvBt7dLk/uGI67EctzDuVp4lCZyVMo0aJO6l/VDlgbInJYDY6cnClLoBp29eKWI6g==",
++      "license": "MIT",
++      "dependencies": {
++        "pako": "^1.0.5"
++      }
++    },
++    "node_modules/upng-js/node_modules/pako": {
++      "version": "1.0.11",
++      "resolved": "https://registry.npmjs.org/pako/-/pako-1.0.11.tgz",
++      "integrity": "sha512-4hLB8Py4zZce5s4yd9XzopqwVv/yGNhV1Bl8NTmCq1763HeK2+EwVTv+leGeL13Dnh2wfbqowVPXCIO0z4taYw==",
++      "license": "(MIT AND Zlib)"
++    },
+     "node_modules/util-deprecate": {
+       "version": "1.0.2",
+       "resolved": "https://registry.npmjs.org/util-deprecate/-/util-deprecate-1.0.2.tgz",
+diff --git a/package.json b/package.json
+index d9be36a..c140036 100644
+--- a/package.json
++++ b/package.json
+@@ -27,6 +27,7 @@
+     "@slack/bolt": "^4.6.0",
+     "@wecom/aibot-node-sdk": "^1.0.1",
+     "@whiskeysockets/baileys": "^7.0.0-rc.9",
++    "3dmol": "^2.5.4",
+     "better-sqlite3": "^11.8.1",
+     "cron-parser": "^5.5.0",
+     "discord.js": "^14.25.1",
+@@ -36,8 +37,8 @@
+     "pino": "^9.6.0",
+     "pino-pretty": "^13.0.0",
+     "qrcode-terminal": "^0.12.0",
+-    "ws": "^8.19.0",
+     "weixin-agent-sdk": "^0.1.0",
++    "ws": "^8.19.0",
+     "zod": "^4.3.6"
+   },
+   "devDependencies": {
+diff --git a/src/channels/local-web/assets/v2/app.js b/src/channels/local-web/assets/v2/app.js
+index 0a1a2d6..6bdadb9 100644
+--- a/src/channels/local-web/assets/v2/app.js
++++ b/src/channels/local-web/assets/v2/app.js
+@@ -226,6 +226,13 @@ const THEMES = ['default', 'ocean', 'sakura', 'cream', 'mono-light', 'midnight',
+         suggestDataDesc: '读 CSV 生成 volcano plot',
+         suggestPubmedTitle: '文献速查',
+         suggestPubmedDesc: '近期 CRISPR off-target 相关论文',
++        suggest3dTitle: '🧬 蛋白 3D 结构',
++        suggest3dDesc: '点击填入提示词；发出后 agent 会下载 PDB 文件，点击文件即可 3D 预览',
++        drawerTabTrace: '推理过程',
++        drawerTabWorkspace: '工作目录',
++        ws3dTitle: '蛋白 3D 结构',
++        ws3dHint: '输入 PDB ID 或点击示例',
++        ws3dLoad: '载入',
+         workThinking: '正在思考',
+         workRunning: '正在执行',
+         workDone: '已完成',
+@@ -356,6 +363,13 @@ const THEMES = ['default', 'ocean', 'sakura', 'cream', 'mono-light', 'midnight',
+         suggestDataDesc: 'Read a CSV and generate a volcano plot',
+         suggestPubmedTitle: 'PubMed quickscan',
+         suggestPubmedDesc: 'Recent CRISPR off-target papers',
++        suggest3dTitle: '🧬 Protein 3D structure',
++        suggest3dDesc: 'Click to fill a prompt; after sending, the agent downloads the PDB and clicking it shows the 3D view',
++        drawerTabTrace: 'Trace',
++        drawerTabWorkspace: 'Workspace',
++        ws3dTitle: 'Protein 3D viewer',
++        ws3dHint: 'Enter a PDB ID or pick an example',
++        ws3dLoad: 'Load',
+         workThinking: 'Thinking',
+         workRunning: 'Running',
+         workDone: 'Done',
+@@ -399,6 +413,18 @@ const THEMES = ['default', 'ocean', 'sakura', 'cream', 'mono-light', 'midnight',
+       langBtn.textContent = t.langToggle;
+       var openTraceBtnLabelEl = document.getElementById('openTraceBtnLabel');
+       if (openTraceBtnLabelEl) openTraceBtnLabelEl.textContent = (t.tabTrace || 'Lab trace');
++      var drawerTabTraceLabelEl = document.getElementById('drawerTabTraceLabel');
++      if (drawerTabTraceLabelEl) drawerTabTraceLabelEl.textContent = (t.drawerTabTrace || 'Trace');
++      var drawerTabWorkspaceLabelEl = document.getElementById('drawerTabWorkspaceLabel');
++      if (drawerTabWorkspaceLabelEl) drawerTabWorkspaceLabelEl.textContent = (t.drawerTabWorkspace || 'Workspace');
++      var ws3dTitleEl = document.getElementById('ws3dLoaderTitle');
++      if (ws3dTitleEl) ws3dTitleEl.textContent = (t.ws3dTitle || 'Protein 3D viewer');
++      var ws3dHintEl = document.getElementById('ws3dLoaderHint');
++      if (ws3dHintEl) ws3dHintEl.textContent = (t.ws3dHint || 'Enter a PDB ID or pick an example');
++      var ws3dLoadBtnEl = document.getElementById('ws3dLoadBtn');
++      if (ws3dLoadBtnEl) ws3dLoadBtnEl.textContent = (t.ws3dLoad || 'Load');
++      // Refresh active 3D viewer's button labels too
++      if (window.__bioclawRefreshProteinViewerLang) window.__bioclawRefreshProteinViewerLang();
+       var traceDrawerTitleEl = document.getElementById('traceDrawerTitle');
+       if (traceDrawerTitleEl) traceDrawerTitleEl.textContent = (t.tabTrace || 'Lab trace');
+       var lblPaletteEl = document.getElementById('lblPalette');
+@@ -1487,7 +1513,10 @@ const THEMES = ['default', 'ocean', 'sakura', 'cream', 'mono-light', 'midnight',
+     }
+ 
+     function traceListQuery() {
+-      var g = groupSel.value;
++      // Default to the current chat's workspace folder when groupSel hasn't been
++      // populated yet (page load). Otherwise loadTrace would fetch events from
++      // ALL groups, showing leftover trace from previous conversations.
++      var g = groupSel.value || workspaceFolderForChat(chatJid);
+       var q = '/api/trace/list?limit=400' + (g ? '&group_folder=' + encodeURIComponent(g) : '');
+       // Both modes hide the noisy stream_output chunks. Thinking + tool_use steps
+       // are kept in BOTH modes so the user can see *what kind* of step happened.
+@@ -1504,20 +1533,35 @@ const THEMES = ['default', 'ocean', 'sakura', 'cream', 'mono-light', 'midnight',
+       renderList(data.events || []);
+     }
+ 
++    function wsFileBadge(name) {
++      var ext = (name.split('.').pop() || '').toLowerCase();
++      if (THREE_D_EXTS.indexOf(ext) >= 0) return '<span class="ws-badge ws-badge-3d">🧬 3D</span>';
++      if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].indexOf(ext) >= 0) return '<span class="ws-badge ws-badge-img">IMG</span>';
++      if (ext === 'pdf') return '<span class="ws-badge ws-badge-pdf">PDF</span>';
++      if (['fasta', 'fa', 'fna', 'faa', 'fastq', 'fq'].indexOf(ext) >= 0) return '<span class="ws-badge ws-badge-doc">SEQ</span>';
++      if (['csv', 'tsv', 'xlsx', 'parquet'].indexOf(ext) >= 0) return '<span class="ws-badge ws-badge-doc">TBL</span>';
++      return '';
++    }
++
+     async function loadTree() {
+       var g = groupSel.value;
+       if (!g) { treeEl.textContent = T().treePick; return; }
+       var res = await fetch('/api/workspace/tree?group_folder=' + encodeURIComponent(g), { headers: authHeaders() });
+       if (!res.ok) { treeEl.textContent = T().loadFail; return; }
+       var data = await res.json();
+-      function nodeHtml(n) {
++      function nodeHtml(n, parentPath) {
++        parentPath = parentPath || '';
++        var fullPath = parentPath ? parentPath + '/' + n.name : n.name;
+         if (n.type === 'dir') {
+-          var inner = (n.children || []).map(nodeHtml).join('');
++          var inner = (n.children || []).map(function (c) { return nodeHtml(c, fullPath); }).join('');
+           return '<details open><summary>' + esc(n.name) + '/</summary><div>' + inner + '</div></details>';
+         }
+-        return '<div>· ' + esc(n.name) + '</div>';
++        var url = '/files/' + fullPath.split('/').map(encodeURIComponent).join('/');
++        return '<button type="button" class="ws-file-btn" data-ws-url="' + escAttr(url) + '" data-ws-name="' + escAttr(n.name) + '">' +
++          '<span class="ws-file-name">' + esc(n.name) + '</span>' + wsFileBadge(n.name) +
++          '</button>';
+       }
+-      treeEl.innerHTML = (data.tree || []).map(nodeHtml).join('') || T().treeEmpty;
++      treeEl.innerHTML = (data.tree || []).map(function (n) { return nodeHtml(n, ''); }).join('') || T().treeEmpty;
+     }
+ 
+     function ensureTrace() {
+@@ -1773,13 +1817,24 @@ const THEMES = ['default', 'ocean', 'sakura', 'cream', 'mono-light', 'midnight',
+ 
+     function showDrawerTrace() {
+       if (drawerPaneTrace) drawerPaneTrace.hidden = false;
++      var wsPane = document.getElementById('drawerPaneWorkspace');
++      if (wsPane) wsPane.hidden = true;
+       if (drawerPaneFiles) { drawerPaneFiles.hidden = true; if (filesPreviewEl) filesPreviewEl.innerHTML = ''; }
++      activeProteinViewer = null;
+       document.body.classList.remove('drawer-preview');
++      document.body.classList.remove('drawer-workspace');
++      var tabT = document.getElementById('drawerTabTrace');
++      var tabW = document.getElementById('drawerTabWorkspace');
++      if (tabT) { tabT.classList.add('is-active'); tabT.setAttribute('aria-selected', 'true'); }
++      if (tabW) { tabW.classList.remove('is-active'); tabW.setAttribute('aria-selected', 'false'); }
+       var titleEl = document.getElementById('traceDrawerTitle');
+       if (titleEl) titleEl.textContent = T().traceTitle || 'Lab Trace';
+     }
+     function showDrawerPreview(name) {
+       if (drawerPaneTrace) drawerPaneTrace.hidden = true;
++      var wsPane2 = document.getElementById('drawerPaneWorkspace');
++      if (wsPane2) wsPane2.hidden = true;
++      document.body.classList.remove('drawer-workspace');
+       if (drawerPaneFiles) drawerPaneFiles.hidden = false;
+       document.body.classList.add('drawer-preview');
+       if (filesPaneTitle) filesPaneTitle.textContent = name || 'Preview';
+@@ -1797,7 +1852,15 @@ const THEMES = ['default', 'ocean', 'sakura', 'cream', 'mono-light', 'midnight',
+         var savedRail = localStorage.getItem('bioclaw-rail-w');
+         var savedTrace = localStorage.getItem('bioclaw-trace-w');
+         if (savedRail && /^\d+$/.test(savedRail)) rootEl.style.setProperty('--rail-w', savedRail + 'px');
+-        if (savedTrace && /^\d+$/.test(savedTrace)) rootEl.style.setProperty('--trace-w-user', savedTrace + 'px');
++        // Migration: drawer used to default to 560px (too narrow for V2 preview / workspace).
++        // If user never dragged it wider than that, clear the saved value to pick up new default.
++        if (savedTrace && /^\d+$/.test(savedTrace)) {
++          if (parseInt(savedTrace, 10) < 700) {
++            try { localStorage.removeItem('bioclaw-trace-w'); } catch (_) {}
++          } else {
++            rootEl.style.setProperty('--trace-w-user', savedTrace + 'px');
++          }
++        }
+       } catch (_) {}
+ 
+       function bind(handle, side) {
+@@ -1862,27 +1925,513 @@ const THEMES = ['default', 'ocean', 'sakura', 'cream', 'mono-light', 'midnight',
+      * url: full URL like /files/chat/<jid>/<rel>
+      * name: filename for display
+      */
++    var THREE_D_EXTS = ['pdb', 'cif', 'mmcif', 'mol2', 'sdf', 'xyz'];
++    var THREE_D_FORMAT = { pdb: 'pdb', cif: 'cif', mmcif: 'cif', mol2: 'mol2', sdf: 'sdf', xyz: 'xyz' };
++
++    // i18n strings for the 3D viewer toolbar — looked up at render time AND on language change.
++    function viewerI18n() {
++      return lang === 'zh' ? {
++        loading: '加载结构…',
++        loadFail: '加载失败：',
++        notLoaded: '3Dmol 未加载，请检查网络',
++        labelStyle: '风格',
++        labelColor: '配色',
++        styleCartoon: '卡通',
++        styleStick: '棒状',
++        styleSphere: '球状',
++        styleLine: '线条',
++        styleBallStick: '球棍',
++        styleSurface: '表面',
++        colorSpectrum: '彩虹',
++        colorChain: '按链',
++        colorBfactor: 'B 因子',
++        colorResidue: '残基',
++        colorSingle: '单色',
++        btnSpin: '自旋',
++        btnBg: '深色',
++        btnReset: '重置',
++        btnPng: '截图',
++        info: function (chains, residues, atoms) {
++          return chains + ' 链 · ' + residues + ' 残基 · ' + atoms + ' 原子';
++        }
++      } : {
++        loading: 'Loading structure…',
++        loadFail: 'Failed to load: ',
++        notLoaded: '3Dmol failed to load — check network',
++        labelStyle: 'Style',
++        labelColor: 'Color',
++        styleCartoon: 'Cartoon',
++        styleStick: 'Stick',
++        styleSphere: 'Sphere',
++        styleLine: 'Line',
++        styleBallStick: 'Ball+Stick',
++        styleSurface: 'Surface',
++        colorSpectrum: 'Spectrum',
++        colorChain: 'By chain',
++        colorBfactor: 'B-factor',
++        colorResidue: 'By residue',
++        colorSingle: 'Mono',
++        btnSpin: 'Spin',
++        btnBg: 'Dark',
++        btnReset: 'Reset',
++        btnPng: 'PNG',
++        info: function (chains, residues, atoms) {
++          return chains + ' chains · ' + residues + ' residues · ' + atoms + ' atoms';
++        }
++      };
++    }
++
++    // Active viewer context — used by applyLang() to refresh button labels on language switch.
++    var activeProteinViewer = null;
++
++    function applyViewerStyle(viewer, styleId, colorId) {
++      if (!viewer || !window.$3Dmol) return;
++      viewer.removeAllSurfaces();
++
++      // Cartoon and non-cartoon styles use slightly different option keys.
++      // Cartoon supports `color: 'spectrum'` for N→C rainbow, but uses `colorscheme`
++      // for chain/residue/B-factor. Non-cartoon (stick/sphere/line) always uses `colorscheme`
++      // or solid `color`.
++      var cartoonOpts, atomOpts;
++      if (colorId === 'bfactor') {
++        var bScheme = { prop: 'b', gradient: 'rwb', min: 0, max: 80 };
++        cartoonOpts = { colorscheme: bScheme };
++        atomOpts = { colorscheme: bScheme };
++      } else if (colorId === 'chain') {
++        cartoonOpts = { colorscheme: 'chain' };
++        atomOpts = { colorscheme: 'chain' };
++      } else if (colorId === 'residue') {
++        cartoonOpts = { colorscheme: 'amino' };
++        atomOpts = { colorscheme: 'amino' };
++      } else if (colorId === 'single') {
++        cartoonOpts = { color: '#7c8aa3' };
++        atomOpts = { color: '#7c8aa3' };
++      } else {
++        // spectrum
++        cartoonOpts = { color: 'spectrum' };
++        atomOpts = { colorscheme: 'cyanCarbon' };
++      }
++
++      switch (styleId) {
++        case 'cartoon':
++          viewer.setStyle({}, { cartoon: cartoonOpts });
++          break;
++        case 'stick':
++          viewer.setStyle({}, { stick: Object.assign({ radius: 0.2 }, atomOpts) });
++          break;
++        case 'sphere':
++          viewer.setStyle({}, { sphere: Object.assign({ scale: 0.32 }, atomOpts) });
++          break;
++        case 'line':
++          viewer.setStyle({}, { line: Object.assign({ linewidth: 1.5 }, atomOpts) });
++          break;
++        case 'ballstick':
++          viewer.setStyle({}, { stick: Object.assign({ radius: 0.13 }, atomOpts), sphere: Object.assign({ scale: 0.22 }, atomOpts) });
++          break;
++        case 'surface':
++          viewer.setStyle({}, { cartoon: cartoonOpts });
++          viewer.addSurface(window.$3Dmol.SurfaceType.VDW, { opacity: 0.65, color: 'white' });
++          break;
++        default:
++          viewer.setStyle({}, { cartoon: cartoonOpts });
++      }
++    }
++
++    function buildViewerToolbar(ctx) {
++      var t = viewerI18n();
++      var tb = ctx.toolbarEl;
++      tb.innerHTML = '';
++
++      // Row: Style selector
++      var rowStyle = document.createElement('div');
++      rowStyle.className = 'files-3d-toolbar-row';
++      var labelStyle = document.createElement('span');
++      labelStyle.className = 'files-3d-toolbar-label';
++      labelStyle.dataset.i18n = 'labelStyle';
++      labelStyle.textContent = t.labelStyle;
++      var selStyle = document.createElement('select');
++      selStyle.className = 'files-3d-select';
++      [
++        ['cartoon', t.styleCartoon],
++        ['stick', t.styleStick],
++        ['sphere', t.styleSphere],
++        ['line', t.styleLine],
++        ['ballstick', t.styleBallStick],
++        ['surface', t.styleSurface],
++      ].forEach(function (pair) {
++        var opt = document.createElement('option');
++        opt.value = pair[0];
++        opt.textContent = pair[1];
++        opt.dataset.i18n = 'style' + pair[0].charAt(0).toUpperCase() + pair[0].slice(1);
++        if (pair[0] === ctx.styleId) opt.selected = true;
++        selStyle.appendChild(opt);
++      });
++      selStyle.addEventListener('change', function () {
++        ctx.styleId = selStyle.value;
++        if (ctx.viewer) { applyViewerStyle(ctx.viewer, ctx.styleId, ctx.colorId); ctx.viewer.render(); }
++      });
++      rowStyle.appendChild(labelStyle);
++      rowStyle.appendChild(selStyle);
++      tb.appendChild(rowStyle);
++
++      // Row: Color selector
++      var rowColor = document.createElement('div');
++      rowColor.className = 'files-3d-toolbar-row';
++      var labelColor = document.createElement('span');
++      labelColor.className = 'files-3d-toolbar-label';
++      labelColor.dataset.i18n = 'labelColor';
++      labelColor.textContent = t.labelColor;
++      var selColor = document.createElement('select');
++      selColor.className = 'files-3d-select';
++      [
++        ['spectrum', t.colorSpectrum],
++        ['chain', t.colorChain],
++        ['bfactor', t.colorBfactor],
++        ['residue', t.colorResidue],
++        ['single', t.colorSingle],
++      ].forEach(function (pair) {
++        var opt = document.createElement('option');
++        opt.value = pair[0];
++        opt.textContent = pair[1];
++        opt.dataset.i18n = 'color' + pair[0].charAt(0).toUpperCase() + pair[0].slice(1);
++        if (pair[0] === ctx.colorId) opt.selected = true;
++        selColor.appendChild(opt);
++      });
++      selColor.addEventListener('change', function () {
++        ctx.colorId = selColor.value;
++        if (ctx.viewer) { applyViewerStyle(ctx.viewer, ctx.styleId, ctx.colorId); ctx.viewer.render(); }
++      });
++      rowColor.appendChild(labelColor);
++      rowColor.appendChild(selColor);
++      tb.appendChild(rowColor);
++
++      // Row: action icon buttons (spin / dark bg / reset / png)
++      var rowBtns = document.createElement('div');
++      rowBtns.className = 'files-3d-icon-btns';
++
++      function makeBtn(id, labelKey, label, onClick) {
++        var b = document.createElement('button');
++        b.type = 'button';
++        b.className = 'files-3d-icon-btn';
++        b.dataset.i18n = labelKey;
++        b.textContent = label;
++        b.addEventListener('click', onClick);
++        return b;
++      }
++
++      var spinBtn = makeBtn('spin', 'btnSpin', t.btnSpin, function () {
++        if (!ctx.viewer) return;
++        ctx.spinning = !ctx.spinning;
++        ctx.viewer.spin(ctx.spinning ? 'y' : false);
++        spinBtn.classList.toggle('is-active', ctx.spinning);
++      });
++      if (ctx.spinning) spinBtn.classList.add('is-active');
++      rowBtns.appendChild(spinBtn);
++
++      var bgBtn = makeBtn('bg', 'btnBg', t.btnBg, function () {
++        if (!ctx.viewer) return;
++        ctx.darkBg = !ctx.darkBg;
++        ctx.viewer.setBackgroundColor(ctx.darkBg ? 'black' : 'white');
++        bgBtn.classList.toggle('is-active', ctx.darkBg);
++        // Icon toolbar gets harder to read on dark bg; bump its background opacity
++        tb.style.background = ctx.darkBg ? 'rgba(20,22,28,0.88)' : 'rgba(255,255,255,0.93)';
++        tb.style.color = ctx.darkBg ? '#e5e7eb' : '';
++      });
++      if (ctx.darkBg) bgBtn.classList.add('is-active');
++      rowBtns.appendChild(bgBtn);
++
++      var resetBtn = makeBtn('reset', 'btnReset', t.btnReset, function () {
++        if (!ctx.viewer) return;
++        ctx.viewer.zoomTo();
++        ctx.viewer.render();
++      });
++      rowBtns.appendChild(resetBtn);
++
++      var pngBtn = makeBtn('png', 'btnPng', t.btnPng, function () {
++        if (!ctx.viewer || typeof ctx.viewer.pngURI !== 'function') return;
++        var dataUri = ctx.viewer.pngURI();
++        var a = document.createElement('a');
++        a.href = dataUri;
++        a.download = (ctx.title || 'structure') + '.png';
++        a.click();
++      });
++      rowBtns.appendChild(pngBtn);
++
++      tb.appendChild(rowBtns);
++
++      // Info chip (chain/residue/atom counts) — only after model loaded
++      if (ctx.info) {
++        var info = document.createElement('div');
++        info.className = 'files-3d-info';
++        info.dataset.i18n = 'info';
++        info.textContent = t.info(ctx.info.chains, ctx.info.residues, ctx.info.atoms);
++        tb.appendChild(info);
++      }
++    }
++
++    /**
++     * Render a 3D molecular structure into `host` (a `.files-preview` element with the actions bar
++     * already appended). Loads structure from `url`, picks format from `ext`.
++     */
++    function renderProteinViewer(host, url, ext, title) {
++      var body = document.createElement('div');
++      body.className = 'files-preview-body files-preview-3d';
++      host.appendChild(body);
++
++      var loading = document.createElement('div');
++      loading.className = 'files-3d-loading';
++      loading.textContent = viewerI18n().loading;
++      body.appendChild(loading);
++
++      if (typeof window.$3Dmol === 'undefined') {
++        loading.textContent = viewerI18n().notLoaded;
++        return;
++      }
++
++      var viewerDiv = document.createElement('div');
++      viewerDiv.className = 'files-3d-viewer';
++      body.appendChild(viewerDiv);
++
++      var toolbarEl = document.createElement('div');
++      toolbarEl.className = 'files-3d-toolbar';
++      body.appendChild(toolbarEl);
++
++      var ctx = {
++        viewer: null,
++        viewerDiv: viewerDiv,
++        toolbarEl: toolbarEl,
++        styleId: 'cartoon',
++        colorId: 'spectrum',
++        spinning: false,
++        darkBg: false,
++        title: title || '',
++        info: null,
++      };
++      activeProteinViewer = ctx;
++      buildViewerToolbar(ctx);
++
++      var format = THREE_D_FORMAT[ext] || 'pdb';
++      // Try to derive a PDB ID from the filename (e.g. "1CRN.pdb" → "1CRN") so we can
++      // auto-fall-back to RCSB when the local file is empty / fake.
++      var derivedPdbId = (function () {
++        var base = (title || '').replace(/\.[^.]+$/, '');
++        return /^[A-Za-z0-9]{4}$/.test(base) ? base.toUpperCase() : null;
++      })();
++
++      function renderModel(text, source) {
++        ctx.viewer = window.$3Dmol.createViewer(viewerDiv, { backgroundColor: 'white' });
++        ctx.viewer.addModel(text, format);
++        applyViewerStyle(ctx.viewer, ctx.styleId, ctx.colorId);
++        ctx.viewer.zoomTo();
++        ctx.viewer.render();
++        try {
++          var atoms = ctx.viewer.selectedAtoms({});
++          var atomCount = atoms.length;
++          var chainSet = {}, resSet = {};
++          atoms.forEach(function (a) {
++            if (a.chain) chainSet[a.chain] = 1;
++            resSet[a.chain + ':' + a.resi] = 1;
++          });
++          ctx.info = { chains: Object.keys(chainSet).length, residues: Object.keys(resSet).length, atoms: atomCount, source: source };
++          return atomCount;
++        } catch (_) { return 0; }
++      }
++
++      function showFallback(reason) {
++        // Display a banner-style overlay over the (possibly partial) viewer with an
++        // optional "Load real X from RCSB" button. The overlay is dismissible so users
++        // can still inspect the partial structure if they want.
++        var msg;
++        if (reason === 'empty') {
++          msg = lang === 'zh'
++            ? '本地文件没有原子坐标（agent 可能写了 PDB 摘要 stub，没真正下载）'
++            : 'The local file has no atom coordinates (the agent likely wrote a PDB summary stub).';
++        } else if (reason === 'no-ss') {
++          msg = lang === 'zh'
++            ? '本地文件缺少二级结构记录（HELIX/SHEET），cartoon 视图会画不出 ribbon。建议从 RCSB 拉真版本。'
++            : 'The local file is missing secondary-structure records (HELIX/SHEET); cartoon ribbons cannot render. Try the real RCSB version.';
++        } else if (reason === 'too-few-atoms') {
++          msg = lang === 'zh'
++            ? '本地文件只有少量原子坐标，可能是 agent 编造的不完整 PDB。建议从 RCSB 拉真版本。'
++            : 'The local file has too few atoms — likely a fabricated/incomplete PDB. Try the real RCSB version.';
++        } else {
++          return;
++        }
++        var btnLabel = derivedPdbId
++          ? (lang === 'zh' ? '从 RCSB 加载真实 ' + derivedPdbId + ' 结构' : 'Load real ' + derivedPdbId + ' from RCSB')
++          : '';
++        var dismissLabel = lang === 'zh' ? '忽略' : 'Dismiss';
++        var html = '<div class="files-3d-empty"><p>' + esc(msg) + '</p><div class="files-3d-empty-actions">';
++        if (derivedPdbId) {
++          html += '<button type="button" class="files-3d-fetch-rcsb" data-pdb="' + escAttr(derivedPdbId) + '">' + esc(btnLabel) + '</button>';
++        }
++        html += '<button type="button" class="files-3d-dismiss">' + esc(dismissLabel) + '</button>';
++        html += '</div></div>';
++        body.insertAdjacentHTML('beforeend', html);
++        var fetchBtn = body.querySelector('.files-3d-fetch-rcsb');
++        if (fetchBtn) {
++          fetchBtn.addEventListener('click', function () {
++            if (window.__bioclawLoadPdbById) window.__bioclawLoadPdbById(derivedPdbId);
++          });
++        }
++        var dismissBtn = body.querySelector('.files-3d-dismiss');
++        if (dismissBtn) {
++          dismissBtn.addEventListener('click', function () {
++            var box = body.querySelector('.files-3d-empty');
++            if (box) box.remove();
++          });
++        }
++      }
++
++      fetch(url)
++        .then(function (r) {
++          if (!r.ok) throw new Error('HTTP ' + r.status);
++          return r.text();
++        })
++        .then(function (text) {
++          loading.remove();
++          // Heuristics for PDB files: warn if the file looks fabricated/incomplete
++          var ssCount = 0;
++          if (format === 'pdb') {
++            var lines = text.split('\n');
++            for (var i = 0; i < lines.length; i++) {
++              var l = lines[i];
++              if (l.indexOf('HELIX') === 0 || l.indexOf('SHEET') === 0) ssCount++;
++            }
++          }
++          var count = renderModel(text, 'local');
++          buildViewerToolbar(ctx);
++          if (count === 0) {
++            showFallback('empty');
++          } else if (format === 'pdb') {
++            // Cartoon needs HELIX/SHEET records to draw ribbons. If missing, even
++            // a real-looking PDB will render as just a thin trace (or nothing).
++            if (ssCount === 0) showFallback('no-ss');
++            else if (count < 50) showFallback('too-few-atoms');
++          }
++        })
++        .catch(function (e) {
++          loading.textContent = viewerI18n().loadFail + (e && e.message || e);
++        });
++    }
++
++    // Refresh the active viewer's toolbar labels when language changes
++    function refreshActiveProteinViewerLang() {
++      if (activeProteinViewer && activeProteinViewer.toolbarEl) {
++        buildViewerToolbar(activeProteinViewer);
++      }
++    }
++    window.__bioclawRefreshProteinViewerLang = refreshActiveProteinViewerLang;
++
++    /**
++     * Load a structure directly from RCSB by PDB ID (e.g. "1CRN").
++     * Opens the drawer's preview pane and renders 3D viewer.
++     */
++    function loadPdbById(rawId) {
++      if (!rawId) return;
++      var id = String(rawId).trim().toUpperCase();
++      if (!/^[A-Z0-9]{4}$/.test(id)) {
++        alert(lang === 'zh' ? 'PDB ID 应为 4 位字母 / 数字（如 1CRN）' : 'PDB ID must be 4 alphanumeric characters (e.g. 1CRN)');
++        return;
++      }
++      if (!filesPreviewEl) return;
++      if (!document.body.classList.contains('trace-open')) openTracePanel();
++      showDrawerPreview(id + '.pdb · RCSB');
++      var url = 'https://files.rcsb.org/view/' + id + '.pdb';
++      var rcsbUrl = 'https://www.rcsb.org/structure/' + id;
++      var actions =
++        '<div class="files-preview-actions-bar">' +
++          '<span class="files-preview-path">PDB · ' + esc(id) + '</span>' +
++          '<a class="file-button" href="' + escAttr(rcsbUrl) + '" target="_blank" rel="noreferrer">RCSB</a>' +
++          '<a class="file-button" href="' + escAttr(url) + '" target="_blank" rel="noreferrer">' + esc(T().openFile || 'Open') + '</a>' +
++          '<a class="file-button" href="' + escAttr(url) + '" download>' + esc(T().download || 'Download') + '</a>' +
++        '</div>';
++      filesPreviewEl.innerHTML = actions;
++      renderProteinViewer(filesPreviewEl, url, 'pdb');
++    }
++    window.__bioclawLoadPdbById = loadPdbById;
++
++    /* ──────── Drawer tabs: Trace / Workspace ──────── */
++    var drawerPaneWorkspace = document.getElementById('drawerPaneWorkspace');
++    var drawerTabTrace = document.getElementById('drawerTabTrace');
++    var drawerTabWorkspace = document.getElementById('drawerTabWorkspace');
++
++    function showDrawerWorkspace() {
++      if (drawerPaneTrace) drawerPaneTrace.hidden = true;
++      if (drawerPaneWorkspace) drawerPaneWorkspace.hidden = false;
++      if (drawerPaneFiles) { drawerPaneFiles.hidden = true; if (filesPreviewEl) filesPreviewEl.innerHTML = ''; }
++      activeProteinViewer = null;
++      document.body.classList.remove('drawer-preview');
++      document.body.classList.add('drawer-workspace');
++      if (drawerTabTrace) { drawerTabTrace.classList.remove('is-active'); drawerTabTrace.setAttribute('aria-selected', 'false'); }
++      if (drawerTabWorkspace) { drawerTabWorkspace.classList.add('is-active'); drawerTabWorkspace.setAttribute('aria-selected', 'true'); }
++    }
++    if (drawerTabTrace) drawerTabTrace.addEventListener('click', showDrawerTrace);
++    if (drawerTabWorkspace) drawerTabWorkspace.addEventListener('click', showDrawerWorkspace);
++
++    /* ──────── Workspace tree click: open files in preview drawer ──────── */
++    if (drawerPaneWorkspace) {
++      drawerPaneWorkspace.addEventListener('click', function (event) {
++        var btn = event.target && event.target.closest ? event.target.closest('.ws-file-btn') : null;
++        if (!btn) return;
++        event.preventDefault();
++        var url = btn.getAttribute('data-ws-url');
++        var name = btn.getAttribute('data-ws-name') || 'file';
++        if (url && window.__bioclawOpenFileInDrawer) {
++          window.__bioclawOpenFileInDrawer(url, name);
++        }
++      });
++    }
++
++    /* ──────── Workspace 3D loader: PDB ID input + chip shortcuts ──────── */
++    var ws3dForm = document.getElementById('ws3dLoaderForm');
++    var ws3dInput = document.getElementById('ws3dInput');
++    if (ws3dForm) {
++      ws3dForm.addEventListener('submit', function (event) {
++        event.preventDefault();
++        if (ws3dInput && ws3dInput.value) loadPdbById(ws3dInput.value);
++      });
++    }
++    if (drawerPaneWorkspace) {
++      drawerPaneWorkspace.addEventListener('click', function (event) {
++        var chip = event.target && event.target.closest ? event.target.closest('.workspace-3d-chip') : null;
++        if (!chip) return;
++        event.preventDefault();
++        var pdbId = chip.getAttribute('data-pdb');
++        if (pdbId) {
++          if (ws3dInput) ws3dInput.value = pdbId;
++          loadPdbById(pdbId);
++        }
++      });
++    }
++
+     async function openFileInDrawer(url, name) {
+       if (!filesPreviewEl) return;
+       // Open the right drawer if not already open
+       if (!document.body.classList.contains('trace-open')) openTracePanel();
+       showDrawerPreview(name);
+       var ext = (name.split('.').pop() || '').toLowerCase();
++      var is3D = THREE_D_EXTS.indexOf(ext) >= 0;
+       var isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].indexOf(ext) >= 0;
+       var isPdf = ext === 'pdf';
+-      var isText = ['py', 'js', 'ts', 'sh', 'json', 'yaml', 'yml', 'css', 'html', 'md', 'txt', 'log', 'csv', 'tsv'].indexOf(ext) >= 0;
++      var isText = ['py', 'js', 'ts', 'sh', 'json', 'yaml', 'yml', 'css', 'html', 'md', 'txt', 'log', 'csv', 'tsv', 'fasta', 'fa', 'fastq', 'fq', 'gff', 'gtf', 'bed', 'vcf'].indexOf(ext) >= 0;
+       var actions =
+         '<div class="files-preview-actions-bar">' +
+           '<span class="files-preview-path" title="' + escAttr(name) + '">' + esc(name) + '</span>' +
+-          '<a class="file-button" href="' + escAttr(url) + '" target="_blank" rel="noreferrer">Open</a>' +
+-          '<a class="file-button" href="' + escAttr(url) + '" download>Download</a>' +
++          '<a class="file-button" href="' + escAttr(url) + '" target="_blank" rel="noreferrer">' + esc(T().openFile || 'Open') + '</a>' +
++          '<a class="file-button" href="' + escAttr(url) + '" download>' + esc(T().download || 'Download') + '</a>' +
+         '</div>';
++      if (is3D) {
++        filesPreviewEl.innerHTML = actions;
++        renderProteinViewer(filesPreviewEl, url, ext);
++        return;
++      }
+       if (isImage) {
+         filesPreviewEl.innerHTML = actions + '<div class="files-preview-body files-preview-image"><img src="' + escAttr(url) + '" alt="' + escAttr(name) + '"></div>';
+         return;
+       }
+       if (isPdf) {
+-        filesPreviewEl.innerHTML = actions + '<div class="files-preview-body"><iframe src="' + escAttr(url) + '" style="width:100%;height:100%;min-height:400px;border:0;border-radius:8px;background:#fff;"></iframe></div>';
++        filesPreviewEl.innerHTML = actions + '<div class="files-preview-body"><iframe src="' + escAttr(url) + '"></iframe></div>';
+         return;
+       }
+       if (isText) {
+@@ -2243,6 +2792,9 @@ const THEMES = ['default', 'ocean', 'sakura', 'cream', 'mono-light', 'midnight',
+           // bubble in-place (lines ~2005-2037). This avoids the "bubble
+           // disappears, full answer pops in later" flicker.
+           await refreshMessages();
++          // Refresh the workspace tree so any new files the agent saved show up
++          // (e.g. a downloaded .pdb appears in the Workspace tab without manual reload)
++          try { if (typeof loadTree === 'function') loadTree(); } catch (_) {}
+         }
+       } catch (e) {}
+     }
+@@ -2275,6 +2827,10 @@ const THEMES = ['default', 'ocean', 'sakura', 'cream', 'mono-light', 'midnight',
+             '<div class="welcome-suggestion-title">' + esc(t.suggestPubmedTitle) + '</div>' +
+             '<div class="welcome-suggestion-desc">' + esc(t.suggestPubmedDesc) + '</div>' +
+           '</button>' +
++          '<button type="button" class="welcome-suggestion is-feature" data-prompt="' + escAttr('帮我下载 1CRN（crambin）的 PDB 文件到工作区，并简要介绍它的来源、功能和结构特点。下载后我点击文件可以直接看 3D 结构。') + '">' +
++            '<div class="welcome-suggestion-title">' + esc(t.suggest3dTitle || '🧬 蛋白 3D 结构') + '</div>' +
++            '<div class="welcome-suggestion-desc">' + esc(t.suggest3dDesc || '点击填入提示词；发出后 agent 会下载 PDB 文件，点击文件即可 3D 预览') + '</div>' +
++          '</button>' +
+         '</div>';
+       welcomeHeroEl.addEventListener('click', function (event) {
+         var btn = event.target && event.target.closest ? event.target.closest('.welcome-suggestion') : null;
+diff --git a/src/channels/local-web/assets/v2/index.html b/src/channels/local-web/assets/v2/index.html
+index e454133..c88db98 100644
+--- a/src/channels/local-web/assets/v2/index.html
++++ b/src/channels/local-web/assets/v2/index.html
+@@ -9,6 +9,9 @@
+   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;550;600;650;700&display=swap" rel="stylesheet">
+   <link rel="stylesheet" href="/assets/v2/style.css">
++  <!-- 3Dmol.js for protein structure rendering (PDB / mmCIF / MOL2 / SDF / XYZ).
++       Served locally from node_modules/3dmol so no internet is required at runtime. -->
++  <script src="/vendor/3Dmol-min.js" defer></script>
+ </head>
+ <body>
+   <div class="unified-root" id="unifiedRoot">
+@@ -109,7 +112,16 @@ <h1 id="chatTitle"></h1>
+       <!-- COL 3: Trace panel (hidden by default, inline column when open) -->
+       <aside class="trace-panel" id="panelTrace" aria-label="Lab trace">
+         <div class="trace-head">
+-          <h2 id="traceDrawerTitle"></h2>
++          <div class="drawer-tabs" role="tablist">
++            <button type="button" class="drawer-tab is-active" id="drawerTabTrace" role="tab" aria-selected="true" data-pane="trace">
++              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v7.527a3 3 0 0 1-.46 1.597L3.42 17.596A2 2 0 0 0 5.1 20.69h13.8a2 2 0 0 0 1.68-3.095l-4.12-6.47A3 3 0 0 1 16 9.527V2"/><line x1="7" y1="2" x2="17" y2="2"/></svg>
++              <span id="drawerTabTraceLabel">Trace</span>
++            </button>
++            <button type="button" class="drawer-tab" id="drawerTabWorkspace" role="tab" aria-selected="false" data-pane="workspace">
++              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
++              <span id="drawerTabWorkspaceLabel">Workspace</span>
++            </button>
++          </div>
+           <button type="button" class="icon-btn" id="closeTrace" aria-label="Close">
+             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+           </button>
+@@ -129,11 +141,32 @@ <h2 id="traceDrawerTitle"></h2>
+             </div>
+           </div>
+           <div id="timeline" class="timeline"></div>
+-          <aside class="trace-sidebar">
+-            <strong class="sidebar-title" id="i18n-sidebar-title"></strong>
+-            <p class="sidebar-hint" id="i18n-sidebar-hint"></p>
+-            <div id="tree" class="tree"></div>
+-          </aside>
++        </div>
++        <div class="workspace-pane" id="drawerPaneWorkspace" hidden>
++          <div class="workspace-toolbar">
++            <strong class="workspace-title" id="i18n-sidebar-title">Workspace</strong>
++            <span class="workspace-hint" id="i18n-sidebar-hint"></span>
++          </div>
++          <div class="workspace-3d-loader">
++            <div class="workspace-3d-loader-head">
++              <span class="workspace-3d-loader-icon" aria-hidden="true">🧬</span>
++              <strong class="workspace-3d-loader-title" id="ws3dLoaderTitle">蛋白 3D 结构</strong>
++              <span class="workspace-3d-loader-hint" id="ws3dLoaderHint">输入 PDB ID 或点击示例</span>
++            </div>
++            <form class="workspace-3d-loader-row" id="ws3dLoaderForm">
++              <input type="text" id="ws3dInput" maxlength="4" placeholder="1CRN" autocomplete="off" spellcheck="false" />
++              <button type="submit" class="primary subtle" id="ws3dLoadBtn">Load</button>
++            </form>
++            <div class="workspace-3d-chips">
++              <button type="button" class="workspace-3d-chip" data-pdb="1CRN" title="Crambin">1CRN</button>
++              <button type="button" class="workspace-3d-chip" data-pdb="4HHB" title="Hemoglobin">4HHB</button>
++              <button type="button" class="workspace-3d-chip" data-pdb="6VXX" title="SARS-CoV-2 spike">6VXX</button>
++              <button type="button" class="workspace-3d-chip" data-pdb="1A3N" title="Deoxyhemoglobin">1A3N</button>
++              <button type="button" class="workspace-3d-chip" data-pdb="2HHB" title="Hemoglobin">2HHB</button>
++              <button type="button" class="workspace-3d-chip" data-pdb="1IGT" title="Antibody (IgG)">1IGT</button>
++            </div>
++          </div>
++          <div id="tree" class="workspace-tree"></div>
+         </div>
+         <div class="files-pane" id="drawerPaneFiles" hidden>
+           <div class="files-toolbar">
+diff --git a/src/channels/local-web/assets/v2/style.css b/src/channels/local-web/assets/v2/style.css
+index af6e4ae..9aaf7f9 100644
+--- a/src/channels/local-web/assets/v2/style.css
++++ b/src/channels/local-web/assets/v2/style.css
+@@ -421,7 +421,7 @@ body.trace-open .trace-open-btn {
+ 
+ /* Column toggles via body classes */
+ body.rail-collapsed { --rail-w: 0px; }
+-body.trace-open     { --trace-w: var(--trace-w-user, min(560px, 45vw)); }
++body.trace-open     { --trace-w: var(--trace-w-user, min(900px, 55vw)); }
+ body:not(.trace-open) #resizerTrace { display: none; }
+ body.rail-collapsed #resizerRail { display: none; }
+ 
+@@ -1433,6 +1433,7 @@ textarea::placeholder { color: var(--muted-soft); }
+   flex-direction: column;
+   overflow: hidden;
+ }
++.trace-panel .trace-main[hidden] { display: none; }
+ .trace-conn-pill {
+   flex-shrink: 0;
+   border-top: 1px solid var(--border);
+@@ -1441,10 +1442,141 @@ textarea::placeholder { color: var(--muted-soft); }
+   color: var(--muted);
+ }
+ 
+-/* When previewing a file, hide the trace header to give max space */
++/* When previewing a file, hide the trace header (tabs) to give max space */
+ body.drawer-preview .trace-head { display: none; }
+ body.drawer-preview .trace-conn-pill { display: none; }
+ 
++/* ──────── Drawer-level Trace / Workspace tabs ──────── */
++.drawer-tabs {
++  display: inline-flex;
++  gap: 2px;
++  background: var(--surface);
++  border: 1px solid var(--border);
++  border-radius: 8px;
++  padding: 3px;
++}
++.drawer-tab {
++  display: inline-flex;
++  align-items: center;
++  gap: 6px;
++  padding: 5px 12px;
++  font-size: 12.5px;
++  font-weight: 600;
++  color: var(--muted);
++  background: transparent;
++  border: none;
++  border-radius: 6px;
++  cursor: pointer;
++  transition: background .12s, color .12s;
++}
++.drawer-tab svg { width: 14px; height: 14px; }
++.drawer-tab:hover { color: var(--ink); }
++.drawer-tab.is-active {
++  background: var(--accent);
++  color: #fff;
++}
++.drawer-tab.is-active svg { stroke: #fff; }
++
++/* ──────── Workspace pane (full-drawer file tree) ──────── */
++.workspace-pane {
++  flex: 1 1 0;
++  min-height: 0;
++  display: flex;
++  flex-direction: column;
++  overflow: hidden;
++}
++.workspace-pane[hidden] { display: none; }
++.workspace-toolbar {
++  flex-shrink: 0;
++  padding: 14px 16px 10px;
++  border-bottom: 1px solid var(--border);
++  background: var(--surface);
++}
++.workspace-title {
++  display: block;
++  font-size: 13px;
++  font-weight: 650;
++  margin-bottom: 4px;
++}
++.workspace-hint {
++  display: block;
++  font-size: 11.5px;
++  color: var(--muted);
++  line-height: 1.5;
++}
++.workspace-tree {
++  flex: 1 1 0;
++  min-height: 0;
++  overflow: auto;
++  padding: 12px 16px 20px;
++  font-size: 13px;
++  line-height: 1.7;
++}
++.workspace-tree details { margin: 2px 0; }
++.workspace-tree summary {
++  cursor: pointer;
++  font-weight: 600;
++  padding: 3px 4px;
++  border-radius: 4px;
++  user-select: none;
++}
++.workspace-tree summary:hover { background: var(--surface-raised); }
++.workspace-tree details > div { padding-left: 16px; border-left: 1px dashed var(--border); margin-left: 6px; }
++
++.ws-file-btn {
++  display: flex;
++  align-items: center;
++  gap: 6px;
++  width: 100%;
++  text-align: left;
++  background: transparent;
++  border: none;
++  padding: 4px 6px;
++  font: inherit;
++  color: var(--ink);
++  cursor: pointer;
++  border-radius: 4px;
++  transition: background .12s;
++}
++.ws-file-btn:hover { background: var(--accent-soft); color: var(--accent); }
++.ws-file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
++.ws-badge {
++  flex-shrink: 0;
++  font-size: 10.5px;
++  font-weight: 700;
++  padding: 1px 6px;
++  border-radius: 4px;
++  letter-spacing: 0.02em;
++}
++.ws-badge-3d  { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
++.ws-badge-img { background: color-mix(in srgb, #06b6d4 18%, transparent); color: #0891b2; }
++.ws-badge-pdf { background: color-mix(in srgb, #f59e0b 22%, transparent); color: #b45309; }
++.ws-badge-doc { background: color-mix(in srgb, #6366f1 18%, transparent); color: #4f46e5; }
++
++/* Welcome suggestion card variant for "view 3D structure" — visually call out the new feature */
++.welcome-suggestion.is-feature {
++  border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--border));
++  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
++  position: relative;
++}
++.welcome-suggestion.is-feature::before {
++  content: 'NEW';
++  position: absolute;
++  top: 8px;
++  right: 10px;
++  font-size: 9.5px;
++  font-weight: 800;
++  letter-spacing: 0.08em;
++  color: #fff;
++  background: var(--accent);
++  padding: 2px 6px;
++  border-radius: 4px;
++}
++.welcome-suggestion.is-feature:hover {
++  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
++  border-color: var(--accent);
++}
++
+ /* ──────── Files pane (drawer preview, opens when clicking files in chat) ──────── */
+ .files-pane {
+   flex: 1 1 0;
+@@ -1652,15 +1784,26 @@ body.drawer-preview .trace-conn-pill { display: none; }
+ }
+ .files-preview-image {
+   display: flex;
+-  align-items: flex-start;
++  align-items: center;
+   justify-content: center;
++  padding: 12px;
+ }
+ .files-preview-image img {
++  width: 100%;
++  height: 100%;
+   max-width: 100%;
+-  height: auto;
++  max-height: 100%;
++  object-fit: contain;
+   border-radius: var(--radius-sm);
+   box-shadow: var(--shadow-sm);
+ }
++.files-preview-body iframe {
++  width: 100%;
++  height: 100%;
++  border: 0;
++  border-radius: var(--radius-sm);
++  background: #fff;
++}
+ .files-preview-code {
+   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+   font-size: 12px;
+@@ -1673,8 +1816,258 @@ body.drawer-preview .trace-conn-pill { display: none; }
+   border-radius: var(--radius-sm);
+   border: 1px solid var(--border);
+   overflow: auto;
++  width: 100%;
++  height: 100%;
++  box-sizing: border-box;
+ }
+ 
++/* ──────── 3D protein viewer (PDB / mmCIF / MOL2 / SDF / XYZ) ──────── */
++.files-preview-3d {
++  flex: 1 1 0;
++  min-height: 0;
++  position: relative;
++  background: #fff;
++  padding: 0;
++  overflow: hidden;
++}
++.files-3d-viewer {
++  position: absolute;
++  inset: 0;
++  width: 100%;
++  height: 100%;
++}
++.files-3d-toolbar {
++  position: absolute;
++  top: 12px;
++  right: 12px;
++  z-index: 5;
++  display: flex;
++  flex-direction: column;
++  gap: 6px;
++  background: rgba(255, 255, 255, 0.93);
++  border: 1px solid var(--border);
++  border-radius: 9px;
++  padding: 8px;
++  box-shadow: var(--shadow-md);
++  backdrop-filter: blur(8px);
++  font-size: 11.5px;
++  max-width: 240px;
++}
++.files-3d-toolbar-row {
++  display: flex;
++  align-items: center;
++  gap: 6px;
++}
++.files-3d-toolbar-label {
++  font-size: 10.5px;
++  font-weight: 700;
++  color: var(--muted);
++  letter-spacing: 0.04em;
++  text-transform: uppercase;
++  width: 38px;
++  flex-shrink: 0;
++}
++.files-3d-select {
++  flex: 1;
++  min-width: 0;
++  font-size: 11.5px;
++  font-weight: 600;
++  color: var(--ink);
++  background: var(--surface);
++  border: 1px solid var(--border);
++  border-radius: 5px;
++  padding: 4px 6px;
++  cursor: pointer;
++}
++.files-3d-icon-btns {
++  display: flex;
++  gap: 2px;
++  flex-wrap: wrap;
++  border-top: 1px solid var(--border);
++  padding-top: 6px;
++}
++.files-3d-icon-btn {
++  background: transparent;
++  border: none;
++  padding: 4px 8px;
++  font-size: 11px;
++  font-weight: 600;
++  color: var(--muted);
++  cursor: pointer;
++  border-radius: 4px;
++  transition: background .12s, color .12s;
++  display: inline-flex;
++  align-items: center;
++  gap: 4px;
++}
++.files-3d-icon-btn:hover { background: var(--surface-raised); color: var(--ink); }
++.files-3d-icon-btn.is-active { background: var(--accent); color: #fff; }
++.files-3d-info {
++  font-size: 10.5px;
++  color: var(--muted);
++  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
++  padding: 4px 0 0;
++  border-top: 1px solid var(--border);
++  margin-top: 2px;
++  line-height: 1.45;
++}
++.files-3d-loading {
++  position: absolute;
++  inset: 0;
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  font-size: 13px;
++  color: var(--muted);
++  pointer-events: none;
++}
++.files-3d-empty {
++  position: absolute;
++  inset: 0;
++  display: flex;
++  flex-direction: column;
++  align-items: center;
++  justify-content: center;
++  gap: 14px;
++  padding: 32px;
++  text-align: center;
++  background: color-mix(in srgb, var(--warn) 5%, var(--surface));
++  z-index: 6;
++}
++.files-3d-empty p {
++  margin: 0;
++  font-size: 13px;
++  line-height: 1.55;
++  color: var(--ink);
++  max-width: 480px;
++}
++.files-3d-empty-actions {
++  display: flex;
++  gap: 8px;
++  flex-wrap: wrap;
++  justify-content: center;
++}
++.files-3d-fetch-rcsb {
++  font-size: 13px;
++  font-weight: 600;
++  padding: 9px 18px;
++  background: var(--accent);
++  color: #fff;
++  border: none;
++  border-radius: 7px;
++  cursor: pointer;
++  transition: filter .12s;
++}
++.files-3d-fetch-rcsb:hover { filter: brightness(1.1); }
++.files-3d-dismiss {
++  font-size: 13px;
++  font-weight: 600;
++  padding: 9px 14px;
++  background: transparent;
++  color: var(--ink);
++  border: 1px solid var(--border);
++  border-radius: 7px;
++  cursor: pointer;
++}
++.files-3d-dismiss:hover { background: var(--surface-raised); }
++
++/* ──────── Workspace 3D loader (input + chips, top of Workspace pane) ──────── */
++.workspace-3d-loader {
++  flex-shrink: 0;
++  padding: 12px 16px 14px;
++  border-bottom: 1px solid var(--border);
++  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
++}
++.workspace-3d-loader-head {
++  display: flex;
++  align-items: baseline;
++  gap: 8px;
++  margin-bottom: 8px;
++  flex-wrap: wrap;
++}
++.workspace-3d-loader-icon { font-size: 16px; }
++.workspace-3d-loader-title {
++  font-size: 12.5px;
++  font-weight: 700;
++  color: var(--ink);
++}
++.workspace-3d-loader-hint {
++  font-size: 11px;
++  color: var(--muted);
++}
++.workspace-3d-loader-row {
++  display: flex;
++  gap: 6px;
++  margin-bottom: 8px;
++}
++.workspace-3d-loader-row input {
++  flex: 1;
++  min-width: 0;
++  padding: 6px 10px;
++  font-size: 13px;
++  font-weight: 600;
++  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
++  text-transform: uppercase;
++  letter-spacing: 0.04em;
++  border: 1px solid var(--border);
++  border-radius: 6px;
++  background: var(--surface);
++  color: var(--ink);
++}
++.workspace-3d-loader-row input:focus {
++  outline: none;
++  border-color: var(--accent);
++  box-shadow: 0 0 0 2px var(--accent-soft);
++}
++.workspace-3d-loader-row button {
++  padding: 6px 14px;
++  font-size: 12px;
++  font-weight: 600;
++  border-radius: 6px;
++  cursor: pointer;
++}
++.workspace-3d-chips {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 5px;
++}
++.workspace-3d-chip {
++  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
++  font-size: 11px;
++  font-weight: 700;
++  padding: 3px 9px;
++  background: var(--surface);
++  border: 1px solid var(--border);
++  color: var(--ink);
++  border-radius: 12px;
++  cursor: pointer;
++  transition: background .12s, color .12s, border-color .12s;
++}
++.workspace-3d-chip:hover {
++  background: var(--accent-soft);
++  border-color: var(--accent);
++  color: var(--accent);
++}
++
++/* "Load PDB" button in header */
++.btn-load-pdb {
++  display: inline-flex;
++  align-items: center;
++  gap: 5px;
++  height: 30px;
++  padding: 0 10px;
++  font-size: 12.5px;
++  font-weight: 600;
++  border: 1px solid var(--border);
++  border-radius: 7px;
++  background: var(--surface);
++  color: var(--ink);
++  cursor: pointer;
++  transition: background .12s, color .12s, border-color .12s;
++}
++.btn-load-pdb:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
++.btn-load-pdb svg { width: 14px; height: 14px; }
++
+ /* ─────────── Lab trace panel (inside drawer) ─────────── */
+ 
+ .trace-toolbar {
+@@ -1721,14 +2114,9 @@ body.drawer-preview .trace-conn-pill { display: none; }
+   min-height: 0;
+   overflow-y: auto;
+ }
+-.trace-sidebar {
+-  flex-shrink: 0;
+-  border-top: 1px solid var(--border);
+-  padding: 12px 16px;
+-  max-height: 35%;
+-  overflow-y: auto;
+-  background: color-mix(in srgb, var(--surface-raised) 50%, transparent);
+-}
++/* Legacy: trace-sidebar was a cramped 35% panel inside trace-main.
++   Workspace is now its own full-drawer pane (drawerPaneWorkspace). */
++.trace-sidebar { display: none; }
+ 
+ /* Trace task cards / process steps */
+ .task-card { border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 10px; background: var(--surface); overflow: hidden; }
+diff --git a/src/channels/local-web/channel.ts b/src/channels/local-web/channel.ts
+index d26556e..92d4bc8 100644
+--- a/src/channels/local-web/channel.ts
++++ b/src/channels/local-web/channel.ts
+@@ -129,6 +129,31 @@ function isSafeRelativePath(relativePath: string): boolean {
+   return normalized.length > 0 && !normalized.startsWith('..');
+ }
+ 
++/**
++ * Resolve `relativePath` under `workspaceRoot`, falling back to a case-insensitive match
++ * per path segment if the exact case isn't on disk. Returns the resolved absolute path or
++ * null if no match. Used because agent-generated URLs sometimes mismatch file casing
++ * (e.g. URL says `1CRN.pdb` but file is saved as `1crn.pdb`).
++ */
++function resolveFileCaseInsensitive(workspaceRoot: string, relativePath: string): string | null {
++  const segments = relativePath.split('/').filter((s) => s.length > 0);
++  let current = workspaceRoot;
++  for (const seg of segments) {
++    let entries: string[];
++    try {
++      entries = fs.readdirSync(current);
++    } catch {
++      return null;
++    }
++    const exact = entries.indexOf(seg) >= 0 ? seg : undefined;
++    const lower = seg.toLowerCase();
++    const ci = exact || entries.find((e) => e.toLowerCase() === lower);
++    if (!ci) return null;
++    current = path.join(current, ci);
++  }
++  return current;
++}
++
+ export class LocalWebChannel implements Channel {
+   name = 'local-web';
+   prefixAssistantName = true;
+@@ -295,6 +320,13 @@ export class LocalWebChannel implements Channel {
+       res.end(getWebVendorScripts().purify);
+       return;
+     }
++    if (req.method === 'GET' && url.pathname === '/vendor/3Dmol-min.js') {
++      res.statusCode = 200;
++      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
++      res.setHeader('Cache-Control', 'public, max-age=86400');
++      res.end(getWebVendorScripts().threeDmol);
++      return;
++    }
+ 
+     if (req.method === 'GET' && url.pathname.startsWith('/assets/')) {
+       this.serveStaticAsset(url.pathname, res);
+@@ -507,14 +539,18 @@ export class LocalWebChannel implements Channel {
+         return;
+       }
+       const workspaceRoot = path.join(GROUPS_DIR, this.resolveWorkspaceFolder(chatJid));
+-      const absolutePath = path.join(workspaceRoot, relativePath);
++      let absolutePath = path.join(workspaceRoot, relativePath);
+       if (!absolutePath.startsWith(workspaceRoot)) {
+         sendJson(res, 403, { error: 'Forbidden' });
+         return;
+       }
+       if (!fs.existsSync(absolutePath)) {
+-        sendJson(res, 404, { error: 'File not found' });
+-        return;
++        const ciResolved = resolveFileCaseInsensitive(workspaceRoot, relativePath);
++        if (!ciResolved) {
++          sendJson(res, 404, { error: 'File not found' });
++          return;
++        }
++        absolutePath = ciResolved;
+       }
+       const ext = path.extname(absolutePath).toLowerCase();
+       const mimeTypes: Record<string, string> = {
+@@ -539,14 +575,18 @@ export class LocalWebChannel implements Channel {
+         return;
+       }
+       const workspaceRoot = path.join(GROUPS_DIR, this.resolveWorkspaceFolder(LOCAL_WEB_GROUP_JID));
+-      const absolutePath = path.join(workspaceRoot, relativePath);
++      let absolutePath = path.join(workspaceRoot, relativePath);
+       if (!absolutePath.startsWith(workspaceRoot)) {
+         sendJson(res, 403, { error: 'Forbidden' });
+         return;
+       }
+       if (!fs.existsSync(absolutePath)) {
+-        sendJson(res, 404, { error: 'File not found' });
+-        return;
++        const ciResolved = resolveFileCaseInsensitive(workspaceRoot, relativePath);
++        if (!ciResolved) {
++          sendJson(res, 404, { error: 'File not found' });
++          return;
++        }
++        absolutePath = ciResolved;
+       }
+       const ext = path.extname(absolutePath).toLowerCase();
+       const mimeTypes: Record<string, string> = {
+diff --git a/src/channels/local-web/vendor-scripts.ts b/src/channels/local-web/vendor-scripts.ts
+index 89f80a2..3dd59d6 100644
+--- a/src/channels/local-web/vendor-scripts.ts
++++ b/src/channels/local-web/vendor-scripts.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Serve marked + DOMPurify for local web chat (no CDN; works offline).
++ * Serve marked + DOMPurify + 3Dmol for local web chat (no CDN; works offline).
+  */
+ import { readFileSync } from 'node:fs';
+ import { createRequire } from 'node:module';
+@@ -7,16 +7,18 @@ import { dirname, join } from 'node:path';
+ 
+ const require = createRequire(import.meta.url);
+ 
+-let cache: { marked: string; purify: string } | null = null;
++let cache: { marked: string; purify: string; threeDmol: string } | null = null;
+ 
+-export function getWebVendorScripts(): { marked: string; purify: string } {
++export function getWebVendorScripts(): { marked: string; purify: string; threeDmol: string } {
+   if (!cache) {
+     const markedRoot = dirname(require.resolve('marked/package.json'));
+     const markedPath = join(markedRoot, 'lib', 'marked.umd.js');
+     const purifyPath = require.resolve('dompurify/dist/purify.min.js');
++    const threeDmolPath = require.resolve('3dmol/build/3Dmol-min.js');
+     cache = {
+       marked: readFileSync(markedPath, 'utf8'),
+       purify: readFileSync(purifyPath, 'utf8'),
++      threeDmol: readFileSync(threeDmolPath, 'utf8'),
+     };
+   }
+   return cache;
+@@ -25,3 +27,4 @@ export function getWebVendorScripts(): { marked: string; purify: string } {
+ /** Paths served by local-web; use in <script src>. */
+ export const WEB_VENDOR_MARKED_PATH = '/_bioclaw-vendor/marked.umd.js';
+ export const WEB_VENDOR_PURIFY_PATH = '/_bioclaw-vendor/purify.min.js';
++export const WEB_VENDOR_THREEDMOL_PATH = '/_bioclaw-vendor/3Dmol-min.js';

@@ -1,0 +1,410 @@
+diff --git a/.github/workflows/publication-regressions.yml b/.github/workflows/publication-regressions.yml
+new file mode 100644
+index 000000000..3406b21c1
+--- /dev/null
++++ b/.github/workflows/publication-regressions.yml
+@@ -0,0 +1,29 @@
++name: Verify publication fixes
++on:
++  pull_request:
++    paths:
++      - 'scientific-skills/Other/resubmission-deadline-tracker/**'
++      - 'scientific-skills/Evidence Insight/citation-network/**'
++      - 'scientific-skills/Other/slide-deck-images/**'
++      - 'tests/publication_regressions.py'
++      - '.github/workflows/publication-regressions.yml'
++  workflow_dispatch:
++permissions:
++  contents: read
++jobs:
++  regression:
++    strategy:
++      fail-fast: false
++      matrix:
++        os: [ubuntu-latest, macos-latest, windows-latest]
++    runs-on: ${{ matrix.os }}
++    timeout-minutes: 5
++    steps:
++      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
++        with:
++          persist-credentials: false
++      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
++        with:
++          python-version: '3.10'
++      - run: python -m pip install -r scientific-skills/Other/resubmission-deadline-tracker/requirements.txt
++      - run: python tests/publication_regressions.py
+diff --git a/scientific-skills/Evidence Insight/citation-network/scripts/export_gexf_html.py b/scientific-skills/Evidence Insight/citation-network/scripts/export_gexf_html.py
+index ec706945c..130ff8fef 100644
+--- a/scientific-skills/Evidence Insight/citation-network/scripts/export_gexf_html.py	
++++ b/scientific-skills/Evidence Insight/citation-network/scripts/export_gexf_html.py	
+@@ -99,7 +99,8 @@ def build_payload(graph) -> dict:
+ 
+ 
+ def render_html(payload: dict) -> str:
+-    payload_json = json.dumps(payload, ensure_ascii=False)
++    # A JSON string must not be able to terminate its containing script element.
++    payload_json = json.dumps(payload, ensure_ascii=False).replace("<", "\\u003c")
+     return f"""<!doctype html>
+ <html lang="en">
+ <head>
+diff --git a/scientific-skills/Other/resubmission-deadline-tracker/SKILL.md b/scientific-skills/Other/resubmission-deadline-tracker/SKILL.md
+index ea9bc735b..5dda297cc 100644
+--- a/scientific-skills/Other/resubmission-deadline-tracker/SKILL.md
++++ b/scientific-skills/Other/resubmission-deadline-tracker/SKILL.md
+@@ -10,6 +10,11 @@ author: AIPOCH
+ 
+ Track manuscript resubmission deadlines and generate actionable task schedules based on remaining time.
+ 
++## Dependencies
++
++- Python 3.9+ (standard-library `zoneinfo`)
++- `pip install -r requirements.txt` supplies IANA timezone data, including on Windows.
++
+ ## Quick Check
+ 
+ ```bash
+@@ -27,7 +32,7 @@ python scripts/main.py --help
+ 
+ 1. Confirm the manuscript title, journal, deadline date, and reviewer issue counts.
+ 2. **Timezone validation:** If `--timezone` is not provided, default to `Asia/Shanghai` and emit a note: "Deadline calculated using Asia/Shanghai timezone. Use `--timezone` to specify your local timezone (e.g., `America/New_York`, `Europe/London`)."
+-3. Calculate remaining time and assign urgency level (standard / urgent / emergency).
++3. Calculate remaining time using the stored IANA timezone and assign urgency level.
+ 4. Generate a phase-appropriate task schedule based on the urgency level.
+ 5. Return the deadline summary, task breakdown, and risk notes.
+ 6. If inputs are incomplete, state exactly which fields are missing and request only the minimum additional information.
+@@ -68,11 +73,14 @@ python scripts/main.py --update "Cancer Research Paper" --progress 60
+ 
+ | Remaining Time | Level | Mode |
+ |----------------|-------|------|
+-| > 14 days | Standard | Full 4-phase schedule |
+-| 3–14 days | Urgent | Triage and P0-only execution |
+-| < 3 days | Emergency | Minimum viable changes + extension request |
++| ≥ 30 days | Relaxed | Full revision schedule |
++| 14–<30 days | Standard | Full 4-phase schedule |
++| 7–<14 days | Active | Triage and priority execution |
++| 3–<7 days | Urgent | Critical changes only |
++| 0–<3 days | Emergency | Minimum viable changes + extension request |
++| < 0 days | Overdue | Contact the editor |
+ 
+-**Note:** The 3–7 day range was previously labeled "Urgent" but the boundary is 3–14 days. Any remaining time between 3 and 14 days triggers Urgent mode.
++These levels describe the existing implementation; no new states are introduced.
+ 
+ ## Output
+ 
+@@ -91,6 +99,15 @@ For complex multi-constraint requests, always include these explicit blocks:
+ 4. Risks and Caveats
+ 5. Next Checks
+ 
++## Timezone and Stored Data
++
++`--timezone` applies when adding a deadline. Existing records use their stored
++`timezone`; their JSON format and files are unchanged. Remaining time is compared
++in UTC, so the machine timezone does not change the result. Invalid dates, unknown
++IANA zones, daylight-saving gaps and ambiguous overlap times are rejected before
++a new record is saved. For an overlap, supply the exact UTC date/time with
++`--timezone UTC`. Interactive mode also asks for a timezone.
++
+ ## Error Handling
+ 
+ - If required inputs are missing, state exactly which fields are missing and request only the minimum additional information.
+diff --git a/scientific-skills/Other/resubmission-deadline-tracker/requirements.txt b/scientific-skills/Other/resubmission-deadline-tracker/requirements.txt
+index 9305cd48d..0883ff070 100644
+--- a/scientific-skills/Other/resubmission-deadline-tracker/requirements.txt
++++ b/scientific-skills/Other/resubmission-deadline-tracker/requirements.txt
+@@ -1,2 +1 @@
+-dataclasses
+-enum
++tzdata
+diff --git a/scientific-skills/Other/resubmission-deadline-tracker/scripts/main.py b/scientific-skills/Other/resubmission-deadline-tracker/scripts/main.py
+index b13b9ac9e..5ea6ebc94 100644
+--- a/scientific-skills/Other/resubmission-deadline-tracker/scripts/main.py
++++ b/scientific-skills/Other/resubmission-deadline-tracker/scripts/main.py
+@@ -17,7 +17,8 @@
+ import os
+ import sys
+ from dataclasses import dataclass, asdict
+-from datetime import datetime, timedelta
++from datetime import datetime, timedelta, timezone as datetime_timezone
++from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+ from enum import Enum
+ from pathlib import Path
+ from typing import List, Optional, Dict, Any
+@@ -30,6 +31,22 @@
+ COMPLETED_FILE = DATA_DIR / "completed.json"
+ 
+ 
++def deadline_instant(date: str, time: str, timezone: str) -> datetime:
++    """Resolve an unambiguous wall time to UTC without using the host timezone."""
++    try:
++        zone = ZoneInfo(timezone)
++    except (ZoneInfoNotFoundError, ValueError) as exc:
++        raise ValueError(f"Unknown IANA timezone: {timezone}") from exc
++    wall_time = datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M")
++    local = wall_time.replace(tzinfo=zone)
++    instant = local.astimezone(datetime_timezone.utc)
++    if instant.astimezone(zone).replace(tzinfo=None) != wall_time:
++        raise ValueError("Deadline falls in a daylight-saving gap; choose a valid local time.")
++    if local.utcoffset() != local.replace(fold=1).utcoffset():
++        raise ValueError("Deadline is ambiguous at a daylight-saving overlap; specify the instant in UTC.")
++    return instant
++
++
+ class UrgencyLevel(Enum):
+     """Urgency classification based on remaining time."""
+     RELAXED = "relaxed"      # >30 days
+@@ -306,6 +323,7 @@ def add_deadline(
+         notes: str = ""
+     ) -> Resubmission:
+         """Add a new resubmission deadline."""
++        deadline_instant(deadline, deadline_time, timezone)
+         now = datetime.now().isoformat()
+         
+         resubmission = Resubmission(
+@@ -375,10 +393,8 @@ def delete_deadline(self, title_or_id: str) -> bool:
+ 
+     def calculate_remaining_time(self, deadline: Resubmission) -> timedelta:
+         """Calculate remaining time until deadline."""
+-        deadline_str = f"{deadline.deadline} {deadline.deadline_time}"
+-        deadline_dt = datetime.strptime(deadline_str, "%Y-%m-%d %H:%M")
+-        now = datetime.now()
+-        return deadline_dt - now
++        deadline_dt = deadline_instant(deadline.deadline, deadline.deadline_time, deadline.timezone)
++        return deadline_dt - datetime.now(datetime_timezone.utc)
+ 
+     def get_urgency_level(self, remaining: timedelta) -> UrgencyLevel:
+         """Determine urgency level based on remaining time."""
+@@ -550,7 +566,7 @@ def print_all_status(self):
+         print("="*80)
+ 
+ 
+-def interactive_mode():
++def interactive_mode(default_timezone: str = DEFAULT_TIMEZONE):
+     """Run in interactive mode."""
+     tracker = DeadlineTracker()
+     
+@@ -575,6 +591,7 @@ def interactive_mode():
+             journal = input("Journal name: ").strip()
+             deadline = input("Deadline date (YYYY-MM-DD): ").strip()
+             deadline_time = input("Deadline time (HH:MM, default 23:59): ").strip() or "23:59"
++            timezone = input(f"IANA timezone (default {default_timezone}): ").strip() or default_timezone
+             
+             try:
+                 major = int(input("Number of major issues (default 0): ").strip() or "0")
+@@ -590,6 +607,7 @@ def interactive_mode():
+                     journal=journal,
+                     deadline=deadline,
+                     deadline_time=deadline_time,
++                    timezone=timezone,
+                     major_issues=major,
+                     minor_issues=minor,
+                     notes=notes
+@@ -668,6 +686,7 @@ def main():
+     parser.add_argument("--journal", "-j", help="Journal name")
+     parser.add_argument("--deadline", help="Deadline date (YYYY-MM-DD)")
+     parser.add_argument("--time", default="23:59", help="Deadline time (HH:MM)")
++    parser.add_argument("--timezone", help=f"IANA deadline timezone (default {DEFAULT_TIMEZONE})")
+     parser.add_argument("--major-issues", type=int, default=0, help="Number of major issues")
+     parser.add_argument("--minor-issues", type=int, default=0, help="Number of minor issues")
+     parser.add_argument("--notes", default="", help="Additional notes")
+@@ -680,7 +699,7 @@ def main():
+     
+     # Interactive mode if no arguments
+     if args.interactive or len(sys.argv) == 1:
+-        interactive_mode()
++        interactive_mode(args.timezone if args.timezone is not None else DEFAULT_TIMEZONE)
+         return
+     
+     if args.add:
+@@ -688,11 +707,14 @@ def main():
+             print("Error: --title, --journal, and --deadline are required for --add")
+             sys.exit(1)
+         
++        if args.timezone is None:
++            print(f"Deadline calculated using {DEFAULT_TIMEZONE} timezone. Use --timezone to specify your local timezone.")
+         result = tracker.add_deadline(
+             title=args.title,
+             journal=args.journal,
+             deadline=args.deadline,
+             deadline_time=args.time,
++            timezone=args.timezone if args.timezone is not None else DEFAULT_TIMEZONE,
+             major_issues=args.major_issues,
+             minor_issues=args.minor_issues,
+             notes=args.notes
+@@ -740,4 +762,8 @@ def main():
+ 
+ 
+ if __name__ == "__main__":
+-    main()
++    try:
++        main()
++    except ValueError as exc:
++        print(f"Error: {exc}", file=sys.stderr)
++        sys.exit(2)
+diff --git a/scientific-skills/Other/slide-deck-images/scripts/generate_svg.py b/scientific-skills/Other/slide-deck-images/scripts/generate_svg.py
+index 7574fbff7..4a1104240 100644
+--- a/scientific-skills/Other/slide-deck-images/scripts/generate_svg.py
++++ b/scientific-skills/Other/slide-deck-images/scripts/generate_svg.py
+@@ -20,8 +20,8 @@
+ 
+ 
+ def slugify(text: str) -> str:
+-    ascii_text = re.sub(r"[^a-zA-Z0-9\\s-]", "", text).strip().lower()
+-    ascii_text = re.sub(r"\\s+", "-", ascii_text)
++    ascii_text = re.sub(r"[^a-zA-Z0-9\s-]", "", text).strip().lower()
++    ascii_text = re.sub(r"\s+", "-", ascii_text)
+     return ascii_text[:30] if ascii_text else "slide"
+ 
+ 
+@@ -32,7 +32,7 @@ def extract_title_and_bullets(text: str) -> tuple[str, list[str]]:
+ 
+     for line in lines:
+         if line.lower().startswith(("headline:", "title:", "#", "##")):
+-            title = re.sub(r"^(headline:|title:|#+)\\s*", "", line, flags=re.I).strip()
++            title = re.sub(r"^(headline:|title:|#+)\s*", "", line, flags=re.I).strip()
+             break
+     else:
+         title = lines[0] if lines else "Untitled"
+@@ -52,7 +52,7 @@ def extract_title_and_bullets(text: str) -> tuple[str, list[str]]:
+ 
+ def parse_outline_sections(text: str) -> list[tuple[str, list[str]]]:
+     sections: list[tuple[str, list[str]]] = []
+-    parts = re.split(r"^##\\s+Slide\\s+\\d+\\s+of\\s+\\d+\\s*$", text, flags=re.M)
++    parts = re.split(r"^##\s+Slide\s+\d+\s+of\s+\d+\s*$", text, flags=re.M)
+     for part in parts[1:]:
+         title = "Untitled"
+         bullets: list[str] = []
+@@ -72,7 +72,7 @@ def render_svg(title: str, bullets: list[str]) -> str:
+     for item in bullets:
+         bullet_lines += (
+             f'<text x="160" y="{y}" font-size="{BODY_SIZE}" '
+-            f'fill="{TEXT_COLOR}" font-family="{FONT_FAMILY}">• {escape_xml(item)}</text>\\n'
++            f'fill="{TEXT_COLOR}" font-family="{FONT_FAMILY}">• {escape_xml(item)}</text>\n'
+         )
+         y += LINE_HEIGHT
+ 
+diff --git a/tests/publication_regressions.py b/tests/publication_regressions.py
+new file mode 100644
+index 000000000..61e1644e1
+--- /dev/null
++++ b/tests/publication_regressions.py
+@@ -0,0 +1,120 @@
++"""Focused regressions for three reviewed Skills; no network or user data access."""
++import contextlib
++from datetime import datetime, timedelta, timezone
++import importlib.util
++import io
++import json
++from pathlib import Path
++import sys
++import tempfile
++import unittest
++from unittest.mock import patch
++import xml.etree.ElementTree as ET
++
++ROOT = Path(__file__).resolve().parents[1]
++
++
++def load(name, relative):
++    spec = importlib.util.spec_from_file_location(name, ROOT / relative)
++    module = importlib.util.module_from_spec(spec)
++    sys.modules[name] = module
++    spec.loader.exec_module(module)
++    return module
++
++
++deadlines = load("deadline_tracker", "scientific-skills/Other/resubmission-deadline-tracker/scripts/main.py")
++network = load("citation_export", "scientific-skills/Evidence Insight/citation-network/scripts/export_gexf_html.py")
++slides = load("svg_slides", "scientific-skills/Other/slide-deck-images/scripts/generate_svg.py")
++
++
++class PublicationRegressions(unittest.TestCase):
++    def test_deadline_instants_and_dst(self):
++        self.assertEqual(deadlines.deadline_instant("2026-07-01", "20:00", "Asia/Shanghai"),
++                         deadlines.deadline_instant("2026-07-01", "08:00", "America/New_York"))
++        before = deadlines.deadline_instant("2026-03-07", "12:00", "America/New_York")
++        after = deadlines.deadline_instant("2026-03-08", "12:00", "America/New_York")
++        self.assertEqual(after - before, timedelta(hours=23))
++        for date, time, zone in [("2026-02-30", "12:00", "UTC"),
++                                 ("2026-03-08", "02:30", "America/New_York"),
++                                 ("2026-11-01", "01:30", "America/New_York"),
++                                 ("2026-01-01", "12:00", "Invalid/Zone")]:
++            with self.subTest(date=date, time=time, zone=zone), self.assertRaises(ValueError):
++                deadlines.deadline_instant(date, time, zone)
++
++    def test_saved_timezone_drives_remaining_time_without_rewriting_history(self):
++        fixed = datetime(2026, 7, 1, 10, tzinfo=timezone.utc)
++
++        class Clock(datetime):
++            @classmethod
++            def now(cls, tz=None):
++                self.assertIs(tz, timezone.utc)
++                return fixed
++
++        with tempfile.TemporaryDirectory() as tmp, patch.object(deadlines, "DATA_DIR", Path(tmp)), \
++             patch.object(deadlines, "DEADLINES_FILE", Path(tmp) / "deadlines.json"):
++            tracker = deadlines.DeadlineTracker()
++            record = tracker.add_deadline("Example", "Example journal", "2026-07-01", "08:00", "America/New_York")
++            before = deadlines.DEADLINES_FILE.read_bytes()
++            with patch.object(deadlines, "datetime", Clock):
++                self.assertEqual(tracker.calculate_remaining_time(record), timedelta(hours=2))
++                self.assertEqual(tracker.calculate_remaining_time(deadlines.DeadlineTracker().deadlines[0]), timedelta(hours=2))
++            self.assertEqual(deadlines.DEADLINES_FILE.read_bytes(), before)
++            with self.assertRaises(ValueError):
++                tracker.add_deadline("Invalid", "Example journal", "2026-03-08", "02:30", "America/New_York")
++            self.assertEqual(deadlines.DEADLINES_FILE.read_bytes(), before)
++            self.assertEqual(len(tracker.deadlines), 1)
++
++    def test_cli_explicit_and_default_timezone(self):
++        for supplied, expected in [(None, "Asia/Shanghai"), ("America/New_York", "America/New_York")]:
++            with self.subTest(zone=supplied), tempfile.TemporaryDirectory() as tmp, \
++                 patch.object(deadlines, "DATA_DIR", Path(tmp)), \
++                 patch.object(deadlines, "DEADLINES_FILE", Path(tmp) / "deadlines.json"):
++                argv = ["main.py", "--add", "--title", "Example", "--journal", "Example journal", "--deadline", "2030-01-01"]
++                if supplied:
++                    argv += ["--timezone", supplied]
++                output = io.StringIO()
++                with patch.object(sys, "argv", argv), contextlib.redirect_stdout(output):
++                    deadlines.main()
++                self.assertEqual(json.loads(deadlines.DEADLINES_FILE.read_text())[0]["timezone"], expected)
++                self.assertEqual("Deadline calculated using" in output.getvalue(), supplied is None)
++
++    def test_interactive_timezone(self):
++        with tempfile.TemporaryDirectory() as tmp, patch.object(deadlines, "DATA_DIR", Path(tmp)), \
++             patch.object(deadlines, "DEADLINES_FILE", Path(tmp) / "deadlines.json"), \
++             patch("builtins.input", side_effect=["1", "Example", "Example journal", "2030-01-01", "12:00", "UTC", "0", "0", "", "6"]), \
++             contextlib.redirect_stdout(io.StringIO()):
++            deadlines.interactive_mode()
++            self.assertEqual(json.loads(deadlines.DEADLINES_FILE.read_text())[0]["timezone"], "UTC")
++
++    def test_html_payload_cannot_end_script_and_round_trips(self):
++        label = '</ScRiPt><script>throw new Error("injected")</script><!-- & \u2028 中文'
++        payload = {"nodes": [{"id": label, "label": label}], "edges": [{"from": label, "to": "ordinary"}]}
++        html = network.render_html(payload)
++        encoded = html.split("const payload = ", 1)[1].split(";\n", 1)[0]
++        self.assertNotIn("<", encoded)
++        self.assertEqual(json.loads(encoded), payload)
++        self.assertEqual(html.lower().count("</script>"), 2)
++
++    def test_svg_outline_and_prompt_titles_render_to_valid_xml(self):
++        text = "## Slide 1 of 2\nHeadline: Review Topic\n- A & B\n## Slide 2 of 2\nHeadline: Results\n- <example>\n"
++        self.assertEqual(slides.parse_outline_sections(text), [("Review Topic", ["A & B"]), ("Results", ["<example>"])])
++        self.assertEqual(slides.extract_title_and_bullets("Title: A title\n- One"), ("A title", ["One"]))
++        self.assertEqual(slides.slugify("Review   Topic"), "review-topic")
++        with tempfile.TemporaryDirectory() as tmp, patch.object(slides, "OUTLINE_PATH", Path(tmp) / "outline.md"), \
++             patch.object(slides, "PROMPTS_DIR", Path(tmp) / "prompts"), \
++             patch.object(slides, "OUTPUT_DIR", Path(tmp) / "slides"):
++            slides.OUTLINE_PATH.write_text(text, encoding="utf-8")
++            slides.main()
++            files = sorted(slides.OUTPUT_DIR.glob("*.svg"))
++            self.assertEqual([p.name for p in files], ["01-slide-review-topic.svg", "02-slide-results.svg"])
++            for file in files:
++                output = file.read_text(encoding="utf-8")
++                ET.fromstring(output)
++                self.assertNotIn(r"\n", output)
++            slides.PROMPTS_DIR.mkdir()
++            (slides.PROMPTS_DIR / "01.md").write_text("Headline: Prompt title\n- One", encoding="utf-8")
++            self.assertEqual(slides.load_slides(), [("Prompt title", ["One"])])
++
++
++if __name__ == "__main__":
++    unittest.main()

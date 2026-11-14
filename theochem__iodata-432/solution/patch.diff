@@ -1,0 +1,64 @@
+diff --git a/iodata/formats/mwfn.py b/iodata/formats/mwfn.py
+index 2c8d5bce..4592a2bb 100644
+--- a/iodata/formats/mwfn.py
++++ b/iodata/formats/mwfn.py
+@@ -335,21 +335,24 @@ def load_one(lit: LineIterator) -> dict:
+         inp["mo_kind"], norba, norbb, inp["mo_occs"], inp["mo_coeffs"], inp["mo_energies"], None
+     )
+     # check number of electrons
+-    if mo.nelec != inp["Naelec"] + inp["Nbelec"]:
++    # The occupation numbers are written with 6 decimals, so their sum may differ
++    # from Naelec and Nbelec by up to 0.5e-6 per orbital.
++    nelec_tol = 0.5e-6 * len(mo.occs)
++    if not np.isclose(mo.nelec, inp["Naelec"] + inp["Nbelec"], rtol=0, atol=nelec_tol):
+         raise LoadError(
+             f"Number of electrons in MolecularOrbitals ({mo.nelec}) is not equal to "
+             f"the sum of 'Naelec' and 'Nbelec' ({inp['Naelec']} + {inp['Nbelec']}).",
+             lit.filename,
+         )
+-    if mo.occsa.sum() != inp["Naelec"]:
++    if not np.isclose(mo.occsa.sum(), inp["Naelec"], rtol=0, atol=nelec_tol):
+         raise LoadError(
+             f"Number of alpha electrons in MolecularOrbitals ({mo.occsa.sum()}) "
+             f"is not equal to the 'Naelec' ({inp['Naelec']}).",
+             lit.filename,
+         )
+-    if mo.occsb.sum() != inp["Nbelec"]:
++    if not np.isclose(mo.occsb.sum(), inp["Nbelec"], rtol=0, atol=nelec_tol):
+         raise LoadError(
+-            f"Number of beta electrons in MolecularOrbitals ({mo.occsb.sum()})"
++            f"Number of beta electrons in MolecularOrbitals ({mo.occsb.sum()}) "
+             f"is not equal to the 'Nbelec' ({inp['Nbelec']}).",
+             lit.filename,
+         )
+diff --git a/iodata/test/test_mwfn.py b/iodata/test/test_mwfn.py
+index e14b6ffc..1a751636 100644
+--- a/iodata/test/test_mwfn.py
++++ b/iodata/test/test_mwfn.py
+@@ -174,6 +174,26 @@ def test_nelec_charge():
+     assert mol3.charge == 0
+ 
+ 
++def test_load_mwfn_fractional_occupations(tmp_path):
++    # Occupations are written with 6 decimals, so three alpha electrons of 1/3
++    # add up to 4.999999 instead of Naelec = 5.
++    occs = ["1.000000"] * 4 + ["0.333333"] * 3 + ["0.000000"]
++    lines = files("iodata.test.data").joinpath("ch3_hf_sto3g_fchk_multiwfn3.7.mwfn")
++    lines = lines.read_text().splitlines(keepends=True)
++    ialpha = 0
++    for i, line in enumerate(lines):
++        if line.startswith("Type= 1"):
++            iocc = next(j for j in range(i, len(lines)) if lines[j].startswith("Occ="))
++            lines[iocc] = f"Occ=  {occs[ialpha]}\n"
++            ialpha += 1
++    assert ialpha == len(occs)
++    fn = tmp_path / "fractional.mwfn"
++    fn.write_text("".join(lines))
++    mol = load_one(fn)
++    assert_allclose(mol.mo.occsa, [float(occ) for occ in occs])
++    assert_allclose(mol.nelec, 9, atol=1e-5)
++
++
+ def test_load_mwfn_he_spdfgh_g03():
+     mol = load_helper("he_spdfgh_virtual_fchk_multiwfn3.7.mwfn")
+     assert_equal(mol.mo.occs.shape[0], mol.mo.coeffs.shape[1])

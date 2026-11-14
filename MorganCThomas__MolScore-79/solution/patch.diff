@@ -1,0 +1,912 @@
+diff --git a/molscore/data/models/boltz/__init__.py b/molscore/data/models/boltz/__init__.py
+new file mode 100644
+index 0000000000..e69de29bb2
+diff --git a/molscore/data/models/boltz/environment.yml b/molscore/data/models/boltz/environment.yml
+new file mode 100644
+index 0000000000..3687059e8a
+--- /dev/null
++++ b/molscore/data/models/boltz/environment.yml
+@@ -0,0 +1,9 @@
++name: boltz
++dependencies:
++  - python=3.10
++  - flask
++  - yaml
++  - pip
++  - pip:
++    - boltz>=2
++  
+\ No newline at end of file
+diff --git a/molscore/gui/monitor.py b/molscore/gui/monitor.py
+index 29e6935aa7..05bba68a48 100755
+--- a/molscore/gui/monitor.py
++++ b/molscore/gui/monitor.py
+@@ -18,10 +18,12 @@
+     SS.input_latest = []
+ if "dock_path" not in SS.keys():
+     SS.dock_path = None
++if "fold_path" not in SS.keys():
++    SS.fold_path = None
+ if "pymol" not in SS:
+     SS.pymol = None
+ if "exclude_params" not in SS:
+-    SS.exclude_params = ["run", "dock_path"]
++    SS.exclude_params = ["run", "dock_path", "fold_path"],
+ if "rename_map" not in SS:
+     SS.rename_map = {}
+ 
+@@ -87,9 +89,10 @@ def main():
+ 
+         # Check any dock path
+         SS.dock_path = any([utils.check_dock_paths(d) for d in SS.input_dirs])
++        SS.fold_path = any([utils.check_fold_paths(d) for d in SS.input_dirs])
+ 
+     # Setup PyMol
+-    if (SS.pymol is None) and (SS.dock_path):
++    if (SS.pymol is None) and ((SS.dock_path) or (SS.fold_path)):
+         if "PYMOL_PATH" in os.environ:
+             SS.pymol = PyMol(pymol_path=os.environ["PYMOL_PATH"])
+         else:
+@@ -132,6 +135,7 @@ def main():
+         ):
+             add_run(input_dir, SS=SS)
+             SS.dock_path = any([utils.check_dock_paths(d) for d in SS.input_dirs])
++            SS.fold_path = any([utils.check_fold_paths(d) for d in SS.input_dirs])
+ 
+         # Option to rename runs
+         st.sidebar.header("Rename runs:")
+@@ -156,7 +160,7 @@ def main():
+ 
+         # ----- Main page -----
+         if nav == "Main":
+-            single_plot(main_df=SS.main_df, SS=SS, dock_path=SS.dock_path)
++            single_plot(main_df=SS.main_df, SS=SS, dock_path=SS.dock_path, fold_path=SS.fold_path)
+ 
+         # ----- Multi-plot -----
+         if nav == "Multi-plot":
+@@ -164,11 +168,11 @@ def main():
+ 
+         # ----- MPO Graph -----
+         if nav == "MPO":
+-            mpo_plot(main_df=SS.main_df, SS=SS, dock_path=SS.dock_path)
++            mpo_plot(main_df=SS.main_df, SS=SS, dock_path=SS.dock_path, fold_path=SS.fold_path)
+ 
+         # ----- Scaffold memory page ----
+         if nav == "Scaffold memory":
+-            scaffold_plot(main_df=SS.main_df, SS=SS, dock_path=SS.dock_path)
++            scaffold_plot(main_df=SS.main_df, SS=SS, dock_path=SS.dock_path, fold_path=SS.fold_path)
+ 
+     # ----- Exit -----
+     exit = st.sidebar.button("Exit")
+diff --git a/molscore/gui/utils/main_page.py b/molscore/gui/utils/main_page.py
+index 39462a8da5..11ed359070 100644
+--- a/molscore/gui/utils/main_page.py
++++ b/molscore/gui/utils/main_page.py
+@@ -6,7 +6,7 @@
+ from molscore.gui.utils import utils
+ 
+ 
+-def single_plot(main_df, SS, dock_path=None):
++def single_plot(main_df, SS, dock_path=None, fold_path=None):
+     """The streamlit monitors main page"""
+ 
+     # ----- Show central plot -----
+diff --git a/molscore/gui/utils/mpo_page.py b/molscore/gui/utils/mpo_page.py
+index 2b90a39512..7f3abac81b 100644
+--- a/molscore/gui/utils/mpo_page.py
++++ b/molscore/gui/utils/mpo_page.py
+@@ -94,7 +94,7 @@ def calculate_aggregate(df, x_variables, x_orders, x_weights, agg_method):
+     )
+ 
+ 
+-def mpo_plot(main_df, SS, dock_path=False):
++def mpo_plot(main_df, SS, dock_path=False, fold_path=False):
+     """Show parallel plots of Top-K molecules"""
+ 
+     # ----- MPO @ step -----
+@@ -204,8 +204,21 @@ def mpo_plot(main_df, SS, dock_path=False):
+                 out_file = os.path.abspath(f"{out_file}.sdf")
+                 st.write(out_file)
+                 if st.button(label="Save", key="export_topk_sdf"):
+-                    file_paths, mol_names = utils.find_sdfs(selection, main_df)
++                    file_paths, mol_names = utils.find_structure_files(selection, main_df)
+                     utils.save_sdf(
+                         mol_paths=file_paths, mol_names=mol_names, out_file=out_file
+                     )
+                     st.write("Saved!")
++                    
++        if fold_path:
++            with st.expander(label="Export top-K molecules"):
++                # User input
++                out_zip = st.text_input(label="File name", key="topk_cif_output")
++                out_zip = os.path.abspath(f"{out_zip}.zip")
++                st.write(out_zip)
++                if st.button(label="Save", key="export_topk_cif"):
++                    file_paths, names = utils.find_structure_files(selection, main_df)
++                    utils.save_cif(
++                        in_paths=file_paths, names=names, out_file=out_zip
++                    )
++                    st.write("Saved!")
+diff --git a/molscore/gui/utils/scaffold_page.py b/molscore/gui/utils/scaffold_page.py
+index e16e676fd8..b64ce8cb54 100644
+--- a/molscore/gui/utils/scaffold_page.py
++++ b/molscore/gui/utils/scaffold_page.py
+@@ -11,7 +11,7 @@
+ from molscore.gui.utils import utils
+ 
+ 
+-def scaffold_plot(main_df, SS, dock_path=None):
++def scaffold_plot(main_df, SS, dock_path=None, fold_path=None):
+     # ----- If multiple input dirs, select one -----
+     if len(SS.input_dirs) > 1:
+         input_dir = st.selectbox(
+diff --git a/molscore/gui/utils/utils.py b/molscore/gui/utils/utils.py
+index 3b8882526a..8eb5f3128c 100644
+--- a/molscore/gui/utils/utils.py
++++ b/molscore/gui/utils/utils.py
+@@ -1,6 +1,7 @@
+ import gzip
+ import os
+ import re
++import zipfile
+ import warnings
+ from glob import glob
+ from itertools import cycle
+@@ -49,6 +50,7 @@ def load(input_dir: os.PathLike, latest_idx: int = 0):
+     # Add run and dock_path as columns
+     df["run"] = [os.path.basename(input_dir)] * len(df)
+     df["dock_path"] = [check_dock_paths(input_dir)] * len(df)
++    df["fold_path"] = [check_fold_paths(input_dir)] * len(df)
+ 
+     return df, latest_idx
+ 
+@@ -103,6 +105,16 @@ def check_dock_paths(input_path):
+             dock_paths.append(os.path.join(input_path, subd))
+     if dock_paths:
+         return dock_paths
++    
++    
++def check_fold_paths(input_path):
++    subdirectories = [x for x in os.walk(os.path.abspath(input_path))][0][1]
++    fold_paths = []
++    for subd in subdirectories:
++        if re.search("BoltzFold", subd):
++            fold_paths.append(os.path.join(input_path, subd))
++    if fold_paths:
++        return fold_paths
+ 
+ 
+ # ----- Plotting molecules -----
+@@ -187,7 +199,7 @@ def display_selected_data(
+                     )
+                     if show_3D:
+                         # Grab best variants
+-                        file_paths, _ = find_sdfs([midx], main_df)
++                        file_paths, _ = find_structure_files([midx], main_df)
+                         for p in file_paths:
+                             viewer.add_ligand(path=p)
+ 
+@@ -195,19 +207,19 @@ def display_selected_data(
+                     if col.button(
+                         label="Send2PyMol", key=f"{key} {legend} pymol_button"
+                     ):
+-                        file_paths, names = find_sdfs([midx], main_df)
++                        file_paths, names = find_structure_files([midx], main_df)
+                         for p, n in zip(file_paths, names):
+                             send2pymol(name=n, path=p, pymol=pymol)
+ 
+         if dock_path:
+             if viewer is not None:
+                 if st.button("ShowAll3D", key=f"All3D_{key}"):
+-                    paths, names = find_sdfs(match_idx, main_df)
++                    paths, names = find_structure_files(match_idx, main_df)
+                     for p in paths:
+                         viewer.add_ligand(path=p)
+             if pymol is not None:
+                 if st.button("SendAll2Pymol", key=f"AllPymol_{key}"):
+-                    paths, names = find_sdfs(match_idx, main_df)
++                    paths, names = find_structure_files(match_idx, main_df)
+                     for p, n in zip(paths, names):
+                         send2pymol(name=n, path=p, pymol=pymol)
+ 
+@@ -222,8 +234,10 @@ def send2pymol(name, path, pymol, col=None):
+     if path.endswith("gz"):
+         with gzip.open(path) as f:
+             mol = next(Chem.ForwardSDMolSupplier(f, removeHs=False))
+-    else:
++    elif path.endswith("sdf") or path.endswith("sd"):
+         mol = next(Chem.ForwardSDMolSupplier(path, removeHs=False))
++    else:
++        st.write(f"Unknown file format for {path}")
+     # Save it to tempfile
+     if mol:
+         with NamedTemporaryFile(mode="w+t", suffix=".sdf") as tfile:
+@@ -232,7 +246,7 @@ def send2pymol(name, path, pymol, col=None):
+             writer.flush()
+             writer.close()
+             pymol(f"load {tfile.name}, {name}")
+-            sleep(0.1)  # Give PyMol one hot 100th
++            sleep(0.1)  # Give PyMol one hot 10th
+     else:
+         if col is not None:
+             col.write("RDKit error parsing molecule")
+@@ -267,9 +281,37 @@ def _find_sdf(query_dir, step, batch_idx):
+             return possible_files[0]
+     if len(possible_files) == 1:
+         return possible_files[0]
++    
++
++def _find_cpx(query_dir, step, batch_idx):
++    if query_dir is None:
++        return
++    step = int(step)
++    batch_idx = int(batch_idx)
++    if query_dir.endswith("BoltzFold"):
++        # Search for a cif file
++        possible_files = sorted(glob(
++            os.path.join(query_dir, str(step), "boltz_results_inputs", "predictions", f"{step}_{batch_idx}", f"{step}_{batch_idx}*.cif")
++        ))
++        if len(possible_files) >= 1:
++            if len(possible_files) > 1: 
++                print(f"Ambiguous file {possible_files}")
++            return possible_files[0]
++        # Search for a pdb file
++        possible_files = sorted(glob(
++            os.path.join(query_dir, str(step), "boltz_results_inputs", "predictions", f"{step}_{batch_idx}", f"{step}_{batch_idx}*.pdb")
++        ))
++        if len(possible_files) >= 1:
++            if len(possible_files) > 1: 
++                print(f"Ambiguous file {possible_files}")
++            return possible_files[0]
++        # No files found
++        print("No .cif or .pdb files found for {step}_{batch_idx}")
++    else:
++        print(f"Unknown path structure for {query_dir}")
+ 
+ 
+-def find_sdfs(match_idxs, main_df):
++def find_structure_files(match_idxs, main_df):
+     # Drop duplicate smiles per run
+     sel_smiles = (
+         main_df.loc[match_idxs, ["run", "smiles"]]
+@@ -290,7 +332,7 @@ def find_sdfs(match_idxs, main_df):
+         first_idx = (
+             main_df.loc[
+                 (main_df.run == run) & (main_df["smiles"] == smi),
+-                ["run", "step", "batch_idx", "dock_path"],
++                ["run", "step", "batch_idx", "dock_path", "fold_path"],
+             ]
+             .drop_duplicates(subset=["run", "step", "batch_idx"])
+             .to_records(index=False)
+@@ -300,11 +342,17 @@ def find_sdfs(match_idxs, main_df):
+     # Get file paths
+     file_paths = []
+     names = []
+-    for (_, s, bi, dps), (_, _, og_s, og_b) in zip(first_idxs, idx_names):
+-        for dp in dps:
+-            file_paths.append(_find_sdf(query_dir=dp, step=s, batch_idx=bi))
+-            dock_path_prefix = os.path.basename(dp).split("_")[0]
+-            names.append(f"Mol: {og_s}_{og_b} - {dock_path_prefix}")
++    for (_, s, bi, dps, fps), (_, _, og_s, og_b) in zip(first_idxs, idx_names):
++        if dps:
++            for dp in dps:
++                file_paths.append(_find_sdf(query_dir=dp, step=s, batch_idx=bi))
++                dock_path_prefix = os.path.basename(dp).split("_")[0]
++                names.append(f"Mol: {og_s}_{og_b} - {dock_path_prefix}")
++        if fps:
++            for fp in fps:
++                file_paths.append(_find_cpx(query_dir=fp, step=s, batch_idx=bi))
++                fold_path_prefix = os.path.basename(fp).split("_")[0]
++                names.append(f"Cpx_{og_s}_{og_b}-{fold_path_prefix}")
+     return file_paths, names
+ 
+ 
+@@ -332,7 +380,15 @@ def save_sdf(mol_paths, mol_names, out_file):
+             st.write(f"No path found for {name}")
+     writer.flush()
+     writer.close()
+-
++    
++def save_cif(in_paths, names, out_file):
++    with zipfile.ZipFile(out_file, 'w') as zipf:
++        for path, name in zip(in_paths, names):
++            if path and path.endswith(".cif"):
++                # Add the file to the ZIP archive
++                zipf.write(path, arcname=f"{name}.cif")
++            else:
++                st.write(f"Unsupported file format or no path found for {name}")
+ 
+ # ----- Plotting -----
+ def plotly_plot(
+diff --git a/molscore/scoring_functions/__init__.py b/molscore/scoring_functions/__init__.py
+index 724a042935..7e439b5026 100644
+--- a/molscore/scoring_functions/__init__.py
++++ b/molscore/scoring_functions/__init__.py
+@@ -227,4 +227,11 @@
+ 
+     all_scoring_functions.append(POSTServer)
+ except Exception as e:
+-    logger.warning(f"POSTServer: currently unavailable due to the following: {e}")
+\ No newline at end of file
++    logger.warning(f"POSTServer: currently unavailable due to the following: {e}")
++    
++try:
++    from molscore.scoring_functions.boltz import Boltz
++    
++    all_scoring_functions.append(Boltz)
++except Exception as e:
++    logger.warning(f"Boltz: currently unavailable due to the following: {e}")
+\ No newline at end of file
+diff --git a/molscore/scoring_functions/base.py b/molscore/scoring_functions/base.py
+index a46f431baf..e4fc2ab9a7 100644
+--- a/molscore/scoring_functions/base.py
++++ b/molscore/scoring_functions/base.py
+@@ -60,6 +60,7 @@ def __init__(
+         env_path: str = None,
+         server_grace: int = 60,
+         server_kwargs: dict = {},
++        server_args: list = [],
+         **kwargs,
+     ):
+         """
+@@ -86,6 +87,7 @@ def __init__(
+ 
+         # Setup any parameters that need to be passed to the server
+         self.server_kwargs = server_kwargs
++        self.server_args = server_args  # Flags to pass to the server
+ 
+         # Check/create Environment
+         if not self._check_env():
+@@ -132,7 +134,8 @@ def _launch_server(self):
+         while self._check_port(port):
+             port += 1
+         kwargs = " ".join([f"--{k} {v}" for k, v in self.server_kwargs.items()])
+-        self.server_cmd = f"{self.engine} run -n {self.env_name} python {self.server_path} --port {port} {kwargs}"
++        args = " ".join([f"--{arg}" for arg in self.server_args])
++        self.server_cmd = f"{self.engine} run -n {self.env_name} python {self.server_path} --port {port} {kwargs} {args}"
+         self.server_url = f"http://localhost:{port}"
+         logger.info(f"Launching server: {self.server_cmd}")
+         try:
+@@ -171,9 +174,8 @@ def _kill_server(self):
+             self.server_subprocess = None
+             logger.info("Server killed")
+ 
+-    def send_smiles_to_server(self, smiles):
+-        payload = {"smiles": smiles}
+-        #logger.debug(f"Sending payload to server: {payload}")
++    def send_smiles_to_server(self, smiles, directory, file_names):
++        payload = {"smiles": smiles, "directory": directory, "file_names": file_names}
+         try:
+             response = requests.post(self.server_url + "/", json=payload)
+         except requests.exceptions.ConnectionError as e:
+@@ -193,7 +195,7 @@ def send_smiles_to_server(self, smiles):
+                 {f"{self.prefix}_{k}" if k != "smiles" else k: v for k, v in r.items()}
+                 for r in results
+             ]
+-            #logger.debug(f"Result from server: {results}")
++            # logger.debug(f"Result from server: {results}")
+         else:
+             results = [{"smiles": smi} for smi in smiles]
+             _ = [
+@@ -203,6 +205,5 @@ def send_smiles_to_server(self, smiles):
+             logger.error(f"Error {response.status_code}: {response.text}")
+         return results
+ 
+-    def __call__(self, smiles: list, **kwargs):
+-        results = self.send_smiles_to_server(smiles)
+-        return results
++    def __call__(self, smiles: list, directory, file_names: list, **kwargs) -> list:
++        return self.send_smiles_to_server(smiles, directory, file_names)
+diff --git a/molscore/scoring_functions/boltz.py b/molscore/scoring_functions/boltz.py
+new file mode 100644
+index 0000000000..2fc055c71f
+--- /dev/null
++++ b/molscore/scoring_functions/boltz.py
+@@ -0,0 +1,112 @@
++import logging
++import os
++
++from molscore import resources
++from molscore.scoring_functions.base import BaseServerSF
++
++logger = logging.getLogger("boltz")
++formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
++logger.setLevel(logging.DEBUG)
++ch = logging.StreamHandler()
++ch.setLevel(logging.INFO)
++logger.addHandler(ch)
++
++
++class Boltz(BaseServerSF):
++    """
++    Predicted complex structure using Boltz co-folding https://doi.org/10.1101/2024.11.19.624167
++    """
++
++    return_metrics = [
++        "confidence_score",
++        "pair_chain_iptm_protein-ligand",
++        "affinity_pred_value",
++        "affinity_probability_binary"
++        ]
++
++    def __init__(
++        self,
++        input_path: os.PathLike,
++        prefix: str = "Boltz",
++        env_engine: str = "mamba",
++        cache: str = "~/.boltz",
++        checkpoint: os.PathLike = None,
++        devices: list = "0",
++        accelerator: str = "gpu",
++        recycling_steps: int = 3,
++        sampling_steps: int = 200,
++        diffusion_samples: int = 1,
++        step_scale: float = 1.638,
++        output_format: str = "mmcif",
++        num_workers: int = 2,
++        override: bool = False,
++        use_msa_server: bool = True,
++        msa_server_url: str = "https://api.colabfold.com",
++        msa_pairing_strategy: str = "greedy",
++        write_full_pae: bool = False,
++        write_full_pde: bool = False,
++        **kwargs,
++    ):
++        """
++        :param prefix: Prefix to identify scoring function instance
++        :param env_engine: Environment engine [conda, mamba]
++        :param input_path: Path to input YAML file (only YAML format is accepted)
++        :param cache: The directory where to download the data and model.
++        :param checkpoint: An optional checkpoint. Uses the provided Boltz-1 model by default.
++        :param devices: The INDEX of devices to use for prediction. Note this is different to Boltz CLI.
++        :param accelerator: The accelerator to use for prediction. [gpu, cpu, tpu]
++        :param recycling_steps: The number of recycling steps to use for prediction.
++        :param sampling_steps: The number of sampling steps to use for prediction.
++        :param diffusion_samples: The number of diffusion samples to use for prediction.
++        :param step_scale: The step size is related to the temperature at which the diffusion process samples the distribution. The lower the higher the diversity among samples (recommended between 1 and 2).
++        :param output_format: The output format to use for the predictions. [mmcif, pdb]
++        :param num_workers: The number of dataloader workers to use for prediction.
++        :param override: Whether to override existing predictions if found.
++        :param use_msa_server: Whether to use the msa server to generate msa's.
++        :param msa_server_url: MSA server url. Used only if --use_msa_server is set.
++        :param msa_pairing_strategy: Pairing strategy to use. Used only if --use_msa_server is set. Options are 'greedy' and 'complete'.
++        :param write_full_pae: Whether to save the full PAE matrix as a file.
++        :param write_full_pde: Whether to save the full PDE matrix as a file.
++        """
++
++        server_kwargs = {
++            "prefix": prefix,
++            "input_path": input_path,
++            "cache": cache,
++            "checkpoint": checkpoint,
++            "devices": " ".join([str(d) for d in devices]),
++            "accelerator": accelerator,
++            "recycling_steps": recycling_steps,
++            "sampling_steps": sampling_steps,
++            "diffusion_samples": diffusion_samples,
++            "step_scale": step_scale,
++            "output_format": output_format,
++            "num_workers": num_workers,
++            "msa_server_url": msa_server_url,
++            "msa_pairing_strategy": msa_pairing_strategy,
++        }
++        server_kwargs = {k: v for k, v in server_kwargs.items() if v is not None}
++        server_args = [
++            k
++            for k, v in {
++                "override": override,
++                "use_msa_server": use_msa_server,
++                "write_full_pae": write_full_pae,
++                "write_full_pde": write_full_pde,
++            }.items()
++            if v
++        ]
++
++        super().__init__(
++            prefix=prefix,
++            env_engine=env_engine,
++            env_name="boltz",
++            env_path=resources.files("molscore.data.models.boltz").joinpath(
++                "environment.yml"
++            ),
++            server_path=resources.files("molscore.scoring_functions.servers").joinpath(
++                "boltz_server.py"
++            ),
++            server_kwargs=server_kwargs,
++            server_args=server_args,
++        )
+diff --git a/molscore/scoring_functions/servers/boltz_server.py b/molscore/scoring_functions/servers/boltz_server.py
+new file mode 100644
+index 0000000000..ea5af18cc3
+--- /dev/null
++++ b/molscore/scoring_functions/servers/boltz_server.py
+@@ -0,0 +1,331 @@
++import argparse
++import json
++import logging
++import os
++import signal
++import subprocess
++from copy import deepcopy
++from glob import glob
++from pathlib import Path
++
++import numpy as np
++import yaml
++from flask import Flask, jsonify, request
++
++from boltz.main import compute_msa
++
++logger = logging.getLogger("boltz_server")
++formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
++logger.setLevel(logging.DEBUG)
++ch = logging.StreamHandler()
++ch.setLevel(logging.INFO)
++logger.addHandler(ch)
++
++app = Flask(__name__)
++
++
++class timedSubprocess:
++    def __init__(self, timeout=None, shell=False):
++        self.cmd = None
++        self.cwd = None
++        self.timeout = timeout
++        self.shell = shell
++        self.process = None
++
++    def run(self, cmd, cwd=None):
++        if not self.shell:
++            self.cmd = cmd.split()
++            self.process = subprocess.Popen(
++                self.cmd,
++                preexec_fn=os.setsid,
++                cwd=cwd,
++                stdout=subprocess.PIPE,
++                stderr=subprocess.PIPE,
++            )
++        else:
++            self.cmd = cmd
++            self.process = subprocess.Popen(
++                self.cmd,
++                shell=self.shell,
++                cwd=cwd,
++                stdout=subprocess.PIPE,
++                stderr=subprocess.PIPE,
++            )
++        try:
++            out, err = self.process.communicate(timeout=self.timeout)
++        except subprocess.TimeoutExpired:
++            print("Process timed out...")
++            out, err = (
++                "".encode(),
++                f"Timed out at {self.timeout}".encode(),
++            )  # Encode for consistency
++            if not self.shell:
++                try:
++                    os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
++                except ProcessLookupError:
++                    pass
++            else:
++                self.process.kill()
++        return out, err
++
++
++class Model:
++    """
++    Create a Model object that loads models once, for example.
++    """
++
++    def __init__(self, **kwargs):
++        self.prefix = kwargs["prefix"]
++        self.msa_server_url = kwargs["msa_server_url"]
++        self.msa_pairing_strategy = kwargs["msa_pairing_strategy"]
++        del kwargs["prefix"]
++        del kwargs["port"]
++
++        # Format n_devices
++        devices = kwargs["devices"]
++        self.cuda_devices = ",".join([str(d) for d in devices])
++        kwargs["devices"] = len(devices)
++
++        # Load yaml file
++        self.input = Path(kwargs["input_path"])
++        with open(self.input, "r") as f:
++            self.config = yaml.safe_load(f)
++        del kwargs["input_path"]
++
++        # Load kwargs
++        self.kwargs = {k: v for k, v in kwargs.items() if v}
++
++        # Load args
++        self.args = []
++        for k, v in kwargs.items():
++            if isinstance(v, bool) and v:
++                self.args.append(k)
++        for a in self.args:
++            del self.kwargs[a]
++        
++        self.add_msa()
++        self.add_affinity()
++
++
++    def add_msa(self):
++        for i, seq_data in enumerate(self.config["sequences"]):
++            if "protein" in seq_data:
++                if not "msa" in seq_data["protein"]:
++                    # Compute msa
++                    chain_id = seq_data["protein"]["id"][0]
++                    seq = seq_data["protein"]["sequence"]
++                    msa_id = f"{self.input.stem}_{chain_id}_msa"
++                    msa_dir = self.input.parent
++                    compute_msa(
++                        data={msa_id: seq}, # dict {input_id_chain_id: seq}
++                        target_id=self.input.stem, # str target_id (record.id)
++                        msa_dir=msa_dir,
++                        msa_server_url=self.msa_server_url,
++                        msa_pairing_strategy=self.msa_pairing_strategy,
++                    )
++                    # Update config
++                    self.config["sequences"][i]["protein"]["msa"] = str(msa_dir / f"{msa_id}.csv")
++
++         
++    def add_affinity(self):
++        # For now we just replace
++        self.config["properties"] = [{
++                "affinity": {
++                    "binder": "Z"
++                }
++            }]
++        
++
++    def add_smiles(self, smiles: str, out_path: str):
++        config = deepcopy(self.config)
++        config["sequences"].append({"ligand": {"id": ["Z"], "smiles": smiles}})
++        with open(out_path, "w") as f:
++            yaml.dump(config, f)
++
++
++@app.route("/", methods=["POST"])
++def compute():
++    # Get JSON from request
++    smiles = request.get_json().get("smiles", [])
++    directory = request.get_json().get("directory", ".")
++    file_names = request.get_json().get("file_names", [])
++
++    # Create directories
++    step_dir = file_names[0].split("_")[0]
++    in_dir = Path(f"{directory}/{model.prefix}_BoltzFold/{step_dir}/inputs/")
++    in_dir.mkdir(parents=True, exist_ok=True)
++    out_dir = in_dir.parent
++    
++    # Write configs
++    for smi, fname in zip(smiles, file_names):
++        in_path = in_dir / f"{fname}.yaml"
++        model.add_smiles(smi, in_path)
++
++    # Submit Boltz jobs
++    p = timedSubprocess(timeout=None, shell=True).run
++    # Check we're not running more devices thant jobs
++    if model.kwargs["devices"] > len(smiles):
++        model.kwargs["devices"] = len(smiles)
++    # Format kwargs and args
++    kwargs = " ".join([f"--{k} {v}" for k, v in model.kwargs.items()])
++    args = " ".join([f"--{arg}" for arg in model.args])
++    # Run command
++    command = f"export CUDA_VISIBLE_DEVICES={model.cuda_devices} ; boltz predict {in_dir} --out_dir {out_dir} {kwargs} {args}"
++    with open(out_dir / "command.txt", "wt") as f:
++        f.write(command)
++    out, err = p(command)
++
++    # Update results
++    results = []
++    for smi, fname in zip(smiles, file_names):
++        # Get prediction directory
++        pred_dir = Path(f"{out_dir}/boltz_results_inputs/predictions/{fname}/")
++        if not pred_dir.exists():
++            results.append(dict(smiles=smi, confidence_score=0.0))
++            continue
++        else:
++            result = {"smiles": smi}
++            # Load confidence data
++            pred_data = []
++            for pred_path in sorted(glob(str(pred_dir / "confidence*.json"))):
++                with open(pred_path, "r") as f:
++                    pred_data.append(json.load(f))
++            
++            if pred_data:
++                # Get max score
++                max_idx = np.argmax([data["confidence_score"] for data in pred_data])
++                pred_data = pred_data[max_idx]
++                pred_data.update({"batch_variant": f"{fname}-{int(max_idx)}"})  # JSON serializable int
++                # Update results, fix itm and iptm
++                chains_ptm = pred_data.pop("chains_ptm")
++                pred_data.update({f"chain_ptm_{i}": v for i, v in chains_ptm.items()})
++                pair_chains_iptm = pred_data.pop("pair_chains_iptm")
++                pred_data.update({f"pair_chain_iptm_{i}-{j}": pair_chains_iptm[i][j] for i in pair_chains_iptm for j in pair_chains_iptm[i]})
++                # Assume the protein is the first and ligand is the last chain
++                pred_data["pair_chain_iptm_protein-ligand"] = pair_chains_iptm["0"][str(len(pair_chains_iptm["0"]) - 1)]
++                result.update(**pred_data)
++                
++            affin_data = []
++            for affin_path in sorted(glob(str(pred_dir / "affinity*.json"))):
++                with open(affin_path, "r") as f:
++                    affin_data.append(json.load(f))
++                    
++            if affin_data:
++                # Get max score based on probability of scoring
++                max_idx = np.argmax([data["affinity_probability_binary"] for data in affin_data])
++                affin_data = affin_data[max_idx]
++                affin_data.update({"batch_variant": f"{fname}-{int(max_idx)}"})  # JSON serializable int
++                result.update(**affin_data)
++            
++            results.append(result)
++            
++    return jsonify(results)
++
++
++def get_args():
++    parser = argparse.ArgumentParser(
++        description="Run a Boltz server to handle Boltz environment"
++    )
++    parser.add_argument("--port", type=int, default=8000, help="Port to run server on")
++    parser.add_argument(
++        "--prefix",
++        type=str,
++        default="Boltz",
++        help="Prefix to identify scoring function instance",
++    )
++    # Additional Boltz parameters
++    parser.add_argument(
++        "--input_path",
++        type=str,
++        default="./boltz_input.yaml",
++        help="Path to input YAML file",
++    )
++    parser.add_argument(
++        "--cache",
++        type=str,
++        default="~/.boltz",
++        help="Directory for downloading data and model",
++    )
++    parser.add_argument(
++        "--checkpoint", type=str, default=None, help="Optional checkpoint file"
++    )
++    parser.add_argument(
++        "--devices",
++        type=int,
++        default=[0],
++        nargs="+",
++        help="Index of devices to use for prediction",
++    )
++    parser.add_argument(
++        "--accelerator",
++        type=str,
++        default="gpu",
++        help="Accelerator to use",
++        choices=["gpu", "cpu", "tpu"],
++    )
++    parser.add_argument(
++        "--recycling_steps", type=int, default=3, help="Number of recycling steps"
++    )
++    parser.add_argument(
++        "--sampling_steps", type=int, default=200, help="Number of sampling steps"
++    )
++    parser.add_argument(
++        "--diffusion_samples", type=int, default=1, help="Number of diffusion samples"
++    )
++    parser.add_argument(
++        "--step_scale",
++        type=float,
++        default=1.638,
++        help="Step scale factor for diffusion sampling",
++    )
++    parser.add_argument(
++        "--output_format",
++        type=str,
++        default="mmcif",
++        help="Output format",
++        choices=["mmcif", "pdb"],
++    )
++    parser.add_argument(
++        "--num_workers", type=int, default=2, help="Number of dataloader workers"
++    )
++    parser.add_argument(
++        "--override",
++        action="store_true",
++        default=False,
++        help="Override existing predictions if found",
++    )
++    parser.add_argument(
++        "--use_msa_server", action="store_true", default=False, help="Use msa server"
++    )
++    parser.add_argument(
++        "--msa_server_url",
++        type=str,
++        default="https://api.colabfold.com",
++        help="MSA server URL",
++    )
++    parser.add_argument(
++        "--msa_pairing_strategy",
++        type=str,
++        default="greedy",
++        help="MSA pairing strategy",
++        choices=["greedy", "complete"],
++    )
++    parser.add_argument(
++        "--write_full_pae",
++        action="store_true",
++        default=False,
++        help="Save the full PAE matrix",
++    )
++    parser.add_argument(
++        "--write_full_pde",
++        action="store_true",
++        default=False,
++        help="Save the full PDE matrix",
++    )
++    return parser.parse_args()
++
++
++if __name__ == "__main__":
++    args = get_args()
++    model = Model(**args.__dict__)
++    app.run(port=args.port)
+diff --git a/molscore/tests/__init__.py b/molscore/tests/__init__.py
+index f038645afa..cb856bf38d 100644
+--- a/molscore/tests/__init__.py
++++ b/molscore/tests/__init__.py
+@@ -25,4 +25,7 @@
+     "chemprop_model": os.path.join(
+         os.path.dirname(os.path.abspath(__file__)), "data", "chemprop_model"
+     ),
++    "boltz_input": os.path.join(
++        os.path.dirname(os.path.abspath(__file__)), "data", "boltz_ubiq.yaml"
++    ),
+ }
+diff --git a/molscore/tests/data/boltz_ubiq.yaml b/molscore/tests/data/boltz_ubiq.yaml
+new file mode 100644
+index 0000000000..1a7ec34794
+--- /dev/null
++++ b/molscore/tests/data/boltz_ubiq.yaml
+@@ -0,0 +1,5 @@
++version: 1  # Optional, defaults to 1
++sequences:
++  - protein:
++      id: [A]
++      sequence: MQIFVKTLTGKTITLEVEPSDTIENVKAKIQDKEGIPPDQQRLIFAGKQLEDGRTLSDYNIQKESTLHLVLRLRGG
+\ No newline at end of file
+diff --git a/molscore/tests/pytest_servers.py b/molscore/tests/pytest_servers.py
+index e70949ea26..540e3054a2 100644
+--- a/molscore/tests/pytest_servers.py
++++ b/molscore/tests/pytest_servers.py
+@@ -178,5 +178,29 @@ def tearDownClass(cls):
+         cls.inst._kill_server()
+ 
+ 
++class TestBoltz(BaseTests.TestScoringFunction):
++    @classmethod
++    def setUpClass(cls):
++        from molscore.scoring_functions.boltz import Boltz
++        cls.obj = Boltz
++        cls.inst = Boltz(
++            prefix="TEST",
++            env_engine="mamba",
++            input_path=test_files["boltz_input"],
++            diffusion_samples=2,
++        )
++        mg = MockGenerator(seed_no=123)
++        cls.input = mg.sample(5)
++        file_names = [str(i) for i in range(len(cls.input))]
++        cls.output = cls.inst(
++            smiles=cls.input, directory=cls.output_directory, file_names=file_names
++        )
++        print(f"Boltz Model Output:\n{json.dumps(cls.output, indent=2)}\n")
++
++    @classmethod
++    def tearDownClass(cls):
++        cls.inst._kill_server()
++
++
+ if __name__ == "__main__":
+     unittest.main()

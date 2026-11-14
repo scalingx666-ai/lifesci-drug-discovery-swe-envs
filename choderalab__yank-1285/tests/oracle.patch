@@ -1,0 +1,20 @@
+diff --git a/devtools/conda-envs/test_env.yaml b/devtools/conda-envs/test_env.yaml
+index a78abaab..df4a45f9 100644
+--- a/devtools/conda-envs/test_env.yaml
++++ b/devtools/conda-envs/test_env.yaml
+@@ -15,7 +15,7 @@ dependencies:
+   - openmm >=7.3
+   - mdtraj >=1.7.2
+   - openmmtools >=0.18.3
+-  - pymbar
++  - pymbar <4
+   - ambermini >=16.16.0
+   - docopt
+   - openmoltools >=0.7.5
+@@ -39,4 +39,4 @@ dependencies:
+   - jinja2
+   - runipy
+   - pip:
+-      - msmb_theme
+\ No newline at end of file
++      - msmb_theme

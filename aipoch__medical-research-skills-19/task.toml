@@ -1,0 +1,68 @@
+version = "1.0"
+
+[task]
+name = "default/aipoch__medical-research-skills-19"
+description = "fix(skills): correct deadline zones and generated output escaping"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "medical-research-skills",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "aipoch/medical-research-skills"
+ref = "f5ef65b9bea79b6dd9553f52f95b0d08f7d64d26"
+reference = "https://github.com/aipoch/medical-research-skills/pull/19"
+source_access = "auto"
+built_at = "2026-11-14T05:42:26.411696+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:62a583e9d3657b756ead11d5daf77286a61387a545e57c377b64f968c91c0039"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-13T12:50:43Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/publication-regressions.yml",
+    "scientific-skills/Evidence Insight/citation-network/scripts/export_gexf_html.py",
+    "scientific-skills/Other/resubmission-deadline-tracker/SKILL.md",
+    "scientific-skills/Other/resubmission-deadline-tracker/requirements.txt",
+    "scientific-skills/Other/resubmission-deadline-tracker/scripts/main.py",
+    "scientific-skills/Other/slide-deck-images/scripts/generate_svg.py",
+    "tests/publication_regressions.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 234
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

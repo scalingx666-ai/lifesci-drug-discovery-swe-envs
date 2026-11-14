@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/jinzhezenggroup__computational-chemistry-agent-skills-95"
+description = "chore(sync): update synced directories"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "computational-chemistry-agent-skills",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "jinzhezenggroup/computational-chemistry-agent-skills"
+ref = "9cb4f9c608a451f240b08770c0a5ee9a0c28fbf8"
+reference = "https://github.com/jinzhezenggroup/computational-chemistry-agent-skills/pull/95"
+source_access = "auto"
+built_at = "2026-11-14T06:04:59.302203+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:3c2632246518062f4dfbb754a19da89a60ff2333eadd0c4323a4ccd11efab8b4"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-08-20T18:45:49Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "quantum-chemistry/xtbloom-run-python-inference/references/python-inference.md",
+    "sync-state.toml",
+    "tools/dpdata-cli/README.md",
+    "tools/dpdata-cli/SKILL.md",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 321
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

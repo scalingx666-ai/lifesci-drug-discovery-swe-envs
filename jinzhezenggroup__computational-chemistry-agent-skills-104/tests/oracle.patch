@@ -1,0 +1,1291 @@
+diff --git a/README.md b/README.md
+index a024b07..dd33b31 100644
+--- a/README.md
++++ b/README.md
+@@ -65,12 +65,12 @@ openclaw skills list --eligible
+ | [packmol-generate-mixture](data-processing/packmol-generate-mixture/SKILL.md) | A tool for generating initial packed molecular configurations (XYZ format) from single-molecule structures by calculating box dimensions, writing input scripts, and executing Packmol. USE WHEN you need to randomly pack a specific number of molecules into a simulation box (defined by target density or fixed lengths) to create starting geometries for molecular dynamics or related computational chemistry workflows. | 1.0 | Requires uv and internet access (uses `uvx packmol ...`). |
+ | [pymatgen-structure](data-processing/pymatgen-structure/SKILL.md) | Structure manipulation and crystal analysis workflows based on pymatgen. USE WHEN you need to read/write common atomistic formats (CIF, POSCAR, XYZ), build supercells, perform site substitution/doping, inspect symmetry (space group), or compute local structure descriptors for materials tasks. | 0.1.0 | Requires Python 3.10+ and pymatgen (recommended via uv). |
+ | [deepmd-finetune-dpa3](machine-learning-potentials/deepmd-finetune-dpa3/SKILL.md) | Fine-tune a DPA3 model in DeePMD-kit using the PyTorch backend. Use when the user wants to adapt a pre-trained DPA3 model to a new downstream dataset. Supports fine-tuning from a self-trained DPA3 model (.pt checkpoint), from a multi-task pre-trained model, or from a built-in pretrained model downloaded via `dp pretrained download` (e.g., DPA-3.1-3M, DPA-3.2-5M, DPA-3.3-1M). Covers single-task and multi-task fine-tuning workflows. | 1.0 | Requires deepmd-kit with PyTorch backend installed. GPU strongly recommended. |
+-| [deepmd-python-inference](machine-learning-potentials/deepmd-python-inference/SKILL.md) | Run Python inference with DeePMD-kit models using the DeepPot API. Use when the user wants to load a trained/frozen DeePMD model (.pth or .pb) or a built-in pretrained model (e.g., DPA-3.2-5M) in Python, predict energy/force/virial for atomic configurations, evaluate descriptors, or calculate model deviation between multiple models. Also covers using `dp test` CLI for batch evaluation against labeled data. | 1.0 | Requires deepmd-kit Python package installed. PyTorch backend for .pth models, TensorFlow for .pb models. |
+-| [deepmd-train](machine-learning-potentials/deepmd-train/SKILL.md) | Train DeePMD-kit models with progressive disclosure. Use when the user wants to train a DeePMD-kit potential, prepare an input.json, choose between model families such as se_e2_a/DeepPot-SE and DPA3, run `dp train`, monitor learning curves, freeze checkpoints, or test trained models. Start with model selection and read only the selected model reference under `models/` when model-specific configuration is needed. | 1.1 | Requires deepmd-kit installed. The selected backend and model may require PyTorch, TensorFlow, JAX, Paddle, GPU support, or custom OP libraries. |
++| [deepmd-python-inference](machine-learning-potentials/deepmd-python-inference/SKILL.md) | Run Python inference with DeePMD-kit models using the DeepPot API. Use when the user wants to load a checkpoint, frozen model (.pb or .pth), DPA4/SeZM AOTInductor deployment archive (.pt2), or built-in pretrained model in Python; predict energy/force/virial; evaluate supported descriptors; calculate model deviation; or use `dp test` against labeled data. | 1.1 | Requires deepmd-kit installed with the backend required by the selected model artifact. |
++| [deepmd-train](machine-learning-potentials/deepmd-train/SKILL.md) | Train DeePMD-kit models with progressive disclosure. Use when the user wants to train a DeePMD-kit potential, prepare an input.json, choose between model families such as se_e2_a/DeepPot-SE, DPA3, DPA4/SeZM, and DPA4C, run `dp train`, monitor learning curves, freeze checkpoints, or test trained models. Start with model selection and read only the selected model reference under `models/` when model-specific configuration is needed. | 1.2 | Requires deepmd-kit installed. The selected backend and model may require PyTorch, TensorFlow, JAX, Paddle, GPU support, or custom OP libraries. |
+ | [dpgen-simplify](machine-learning-potentials/dpgen-simplify/SKILL.md) | Prepare, explain, validate, and run DP-GEN simplify workflows for reducing repeated or redundant DeepMD datasets. Use when the user wants to generate or modify `param.json` and `machine.json`, run `dpgen simplify param.json machine.json`, organize repeated simplify experiments, or inspect simplify outputs. | 0.2.0 | Requires a runnable environment with Python and an activated DP-GEN runtime where `dpgen` is available in PATH for the outer simplify command. Real execution also requires DeePMD-kit and any backend-specific software required by the selected `fp_style`. For scheduler execution, each stage environment must be explicitly activated in `resources.source_list`. |
+ | [rdkit-conf](molecular-conformer/rdkit-conf/SKILL.md) | A standardized CLI wrapper for RDKit 3D/2D conformer generation that samples multiple conformers per molecule (ETKDGv3, default 10), optimizes each with a force field (MMFF94s/UFF), keeps the lowest-energy conformer, automatically falls back to 2D layout on total embedding failure with a printed warning, and writes results to SDF or XYZ format. USE WHEN you need to generate 3D (or 2D fallback) molecular geometries from SMILES datasets (.csv/.smi) for downstream tasks such as docking, visualization, or 3D-descriptor computation. | 1.0 | Requires uv. Dependencies (rdkit, pandas) are declared as PEP 723 inline script metadata and are installed automatically when the script is invoked with `uv run <script_path>` (do NOT use `uv run python <script_path>` -- that bypasses the inline metadata and will not install dependencies automatically). |
+ | [antechamber](molecular-dynamics/antechamber/SKILL.md) | A command-line tool in AmberTools for preparing small molecules or non-standard residues within GAFF/AMBER-compatible chemical space for molecular mechanics simulations, by automating atom/bond typing, charge generation or import, and force-field–compatible input generation. USE WHEN you are working in AMBER, dealing with molecules not covered by standard force fields, and already have a structure that can be processed (e.g., pdb, mol2, ac, gout). Typical use cases include parameterizing ligands or modified residues (assigning atom/bond types, generating or reading partial charges), converting structures from upstream tools into mol2/prepi formats, and preparing topology-ready inputs for downstream tools such as LEaP. DO NOT USE for standard residues, metal complexes, inorganic systems, or when no valid molecular structure is available (e.g., only SMILES). | 1.0 | Requires AmberTools installed and available in PATH |
+-| [lammps-deepmd](molecular-dynamics/lammps-deepmd/SKILL.md) | A tool and knowledge base for running molecular dynamics (MD) simulations in LAMMPS with the DeePMD-kit plugin. It handles input script preparation, ensemble selection (NVE/NVT/NPT), and job execution via `uv` or offline binaries. USE WHEN you need to set up, write, explain, or execute a LAMMPS molecular dynamics simulation using a DeePMD machine learning potential (e.g., `graph.pb`). | 1.0 | Requires LAMMPS with DeePMD-kit support. Online mode prefers `uvx --from lammps --with deepmd-kit[gpu,torch,lmp] lmp`; offline mode requires a user-provided LAMMPS executable or module. |
++| [lammps-deepmd](molecular-dynamics/lammps-deepmd/SKILL.md) | A tool and knowledge base for running molecular dynamics (MD) simulations in LAMMPS with the DeePMD-kit plugin. It handles input script preparation, ensemble selection (NVE/NVT/NPT), and execution with a verified DeePMD-enabled runtime. USE WHEN you need to set up, write, explain, or execute a LAMMPS molecular dynamics simulation using a DeePMD machine learning potential (for example `.pb`, `.pth`, or DPA4/SeZM `.pt2`). | 1.1 | Requires a user-provided, containerized, or source-built LAMMPS runtime with DeePMD-kit support. Verify capabilities in the target environment. |
+ | [lammps-reaxff](molecular-dynamics/lammps-reaxff/SKILL.md) | Run reactive molecular dynamics simulations in LAMMPS with the ReaxFF potential, including preparing input scripts (pair_style reaxff + fix qeq/reaxff), mapping LAMMPS atom types to elements via pair_coeff, choosing ensembles (NVE/NVT/NPT), and adding common ReaxFF diagnostics such as species analysis. Use when the user wants LAMMPS+ReaxFF workflows or needs a working, annotated `input.lammps` template. | 1.0 | Requires a LAMMPS build with the REAXFF package enabled (pair_style reaxff and fix qeq/reaxff). Optional acceleration variants: reaxff/omp or reaxff/kk. |
+ | [rdkit-repr](molecular-representation/rdkit-repr/SKILL.md) | A standardized CLI wrapper for RDKit molecular featurization workflows that handles physicochemical descriptor computation (outputs .csv) and molecular fingerprint extraction (outputs .npy or .csv), with built-in SMILES validation. USE WHEN you need to compute RDKit molecular descriptors or fingerprints from SMILES datasets (.csv/.smi), or when you want to list all available descriptor names and presets. | 1.0 | Requires uv. Dependencies (rdkit, pandas, numpy) are declared as PEP 723 inline script metadata and are installed automatically when the script is invoked with `uv run <script_path>` (do NOT use `uv run python <script_path>` -- that bypasses the inline metadata and will not install dependencies automatically). |
+ | [unimol](molecular-representation/unimol/SKILL.md) | A standardized CLI wrapper for Uni-Mol molecular ML workflows that handles representation extraction (embeddings), model training (regression/classification), and property prediction with built-in RDKit SMILES validation. USE WHEN you need to generate molecular embeddings, train machine learning models for chemical properties, or run predictions on SMILES datasets (.csv/.smi) using the Uni-Mol framework. | 1.0 | Requires uv. Dependencies (unimol-tools, rdkit, etc.) are handled automatically via inline script metadata in unimol_helper.py. |
+diff --git a/machine-learning-potentials/deepmd-python-inference/SKILL.md b/machine-learning-potentials/deepmd-python-inference/SKILL.md
+index 84348f8..59811bc 100644
+--- a/machine-learning-potentials/deepmd-python-inference/SKILL.md
++++ b/machine-learning-potentials/deepmd-python-inference/SKILL.md
+@@ -1,11 +1,11 @@
+ ---
+ name: deepmd-python-inference
+-description: Run Python inference with DeePMD-kit models using the DeepPot API. Use when the user wants to load a trained/frozen DeePMD model (.pth or .pb) or a built-in pretrained model (e.g., DPA-3.2-5M) in Python, predict energy/force/virial for atomic configurations, evaluate descriptors, or calculate model deviation between multiple models. Also covers using `dp test` CLI for batch evaluation against labeled data.
+-compatibility: Requires deepmd-kit Python package installed. PyTorch backend for .pth models, TensorFlow for .pb models.
++description: Run Python inference with DeePMD-kit models using the DeepPot API. Use when the user wants to load a checkpoint, frozen model (.pb or .pth), DPA4/SeZM AOTInductor deployment archive (.pt2), or built-in pretrained model in Python; predict energy/force/virial; evaluate supported descriptors; calculate model deviation; or use `dp test` against labeled data.
++compatibility: Requires deepmd-kit installed with the backend required by the selected model artifact.
+ license: LGPL-3.0-or-later
+ metadata:
+   author: iProzd
+-  version: '1.0'
++  version: '1.1'
+   repository: https://github.com/deepmodeling/deepmd-kit
+ ---
+ 
+@@ -29,15 +29,20 @@ e, f, v = dp.eval(coord, cell, atype)
+ ## Agent Responsibilities
+ 
+ 1. Determine the model source:
+-   - Frozen model file (`.pth` for PyTorch, `.pb` for TensorFlow)
++   - Frozen model file (`.pth` for conventional PyTorch, `.pb` for TensorFlow, or `.pt2` for DPA4/SeZM)
+    - Built-in pretrained model name (e.g., `DPA-3.2-5M`)
+-   - Checkpoint file (requires freezing first)
++   - PyTorch checkpoint (`.pt`), whose stored model configuration must be inspected before choosing an inference or export path
++1. Read `references/model-artifacts.md` for `.pt`/`.pt2` models or whenever the artifact route is unclear.
++1. Read `references/held-out-evaluation.md` for complete labeled evaluation used for checkpoint selection or production admission.
+ 1. Determine the inference task:
+    - Single-frame prediction (energy, force, virial)
+    - Batch prediction over multiple frames
+    - Descriptor evaluation
+    - Model deviation calculation
+    - CLI-based testing against labeled data
++1. Before using descriptor or embedding hooks, confirm that the selected
++   artifact supports them; a loadable `.pt2` does not necessarily contain the
++   serialized model required by those hooks.
+ 1. Help the user prepare input arrays in the correct format.
+ 1. Run inference and report results.
+ 
+@@ -54,6 +59,9 @@ dp = DeepPot("model.pth")
+ # From a frozen TensorFlow model
+ dp = DeepPot("graph.pb")
+ 
++# From a frozen DPA4/SeZM model
++dp = DeepPot("model.pt2")
++
+ # From a built-in pretrained model (auto-downloads if not cached)
+ dp = DeepPot("DPA-3.2-5M")
+ ```
+@@ -196,6 +204,9 @@ Virial RMSE/Natoms : 2.957e-04 eV
+ 
+ With `-d test_detail`, per-frame predictions are saved to files for further analysis.
+ 
++The 30-frame commands above are bounded examples, not complete held-out evaluation.
++Use `references/held-out-evaluation.md` when the result admits a model for production.
++
+ ## Complete Example: Train, Freeze, and Inference
+ 
+ ```python
+@@ -285,7 +296,9 @@ dp pretrained download DPA-3.2-5M --cache-dir ./models
+ 
+ ## Agent Checklist
+ 
+-- [ ] Model file exists and is accessible (`.pth`, `.pb`, or valid pretrained name)
++- [ ] Model file exists and is accessible (`.pb`, `.pth`, `.pt`, `.pt2`, or valid pretrained name)
++- [ ] An ambiguous `.pt` checkpoint was classified from its stored configuration, not its filename
++- [ ] The requested descriptor or embedding operation is supported by the specific artifact, not inferred from its suffix
+ - [ ] `coord` array is shaped (nframes, natoms\*3) and in Angstrom
+ - [ ] `cell` array is shaped (nframes, 9) or `None` for non-periodic systems
+ - [ ] `atype` indices match the model's `type_map` ordering
+diff --git a/machine-learning-potentials/deepmd-python-inference/references/dpa4-freeze-policy.md b/machine-learning-potentials/deepmd-python-inference/references/dpa4-freeze-policy.md
+new file mode 100644
+index 0000000..370f034
+--- /dev/null
++++ b/machine-learning-potentials/deepmd-python-inference/references/dpa4-freeze-policy.md
+@@ -0,0 +1,24 @@
++# DPA4 freeze-time inference policy
++
++Read this reference before exporting a DPA4 `.pt2`. The generated archive may
++embed inference choices, so do not inherit unknown values of
++`DP_TRITON_INFER`, `DP_TF32_INFER`, or `DP_AMP_INFER` from the shell.
++
++Choose one explicit policy for the target node. A conservative production
++baseline that avoids the slow default while retaining full-precision
++accumulation is:
++
++```bash
++export DP_TRITON_INFER=1
++export DP_TF32_INFER=0
++export DP_AMP_INFER=0
++dp --pt freeze -c model.ckpt.pt -o frozen_model
++```
++
++`DP_TRITON_INFER=2` autotunes for the current hardware and therefore reinforces
++the requirement to freeze and run on the same physical node. Levels 1 and 2 keep
++FP32 accumulation. Level 3, TF32, and AMP change the numerical policy and require
++task-specific accuracy and stability validation before production.
++
++Record all three values, device/runtime identity, input and output hashes, freeze
++command, log, and true exit code with the artifact.
+diff --git a/machine-learning-potentials/deepmd-python-inference/references/held-out-evaluation.md b/machine-learning-potentials/deepmd-python-inference/references/held-out-evaluation.md
+new file mode 100644
+index 0000000..bfef5d3
+--- /dev/null
++++ b/machine-learning-potentials/deepmd-python-inference/references/held-out-evaluation.md
+@@ -0,0 +1,82 @@
++# Complete held-out evaluation
++
++Read this reference when labeled DeePMD systems are used to select a checkpoint
++or admit a model for production. A bounded smoke test is not a complete
++held-out evaluation.
++
++## Admit the data
++
++- Keep held-out systems independent of training and validation by system,
++  trajectory, or source family; do not randomly split correlated adjacent frames.
++- Enumerate every held-out system and all of its `set.*` directories.
++- Set `natoms` to the number of whitespace-separated entries in `type.raw`.
++  Require coordinate and force widths of `3 * natoms`, one energy row per frame,
++  nine box values per periodic frame, and finite values for every evaluated label.
++- When `type_map.raw` is present, interpret `type.raw` as zero-based indices into
++  that ordered map and compare model and data types by element identity. When it
++  is absent, require provenance that the dataset indices already follow the
++  candidate model's ordered type map. Fail closed when neither contract is
++  established; never copy dataset indices into an assumed model map.
++
++## Run every system
++
++Use the backend required by the exact candidate artifact. For a DPA4/SeZM native
++checkpoint, run one command per held-out system. Use a unique, suffix-free
++detail prefix such as `system_000` or `system_001`; the energy detail writer
++replaces a path suffix with `.e.out`, `.e_peratom.out`, and `.f.out`. A dotted
++identifier such as `system.000` would therefore collide with another system
++after suffix replacement:
++
++```bash
++detail_root="details/selected-SHA256"
++test ! -e "$detail_root" || exit 1
++mkdir -p "$detail_root"
++detail_prefix="$detail_root/system_000"
++dp --pt test -m selected.pt -s held_out/system_000 -n 0 -d "$detail_prefix"
++```
++
++`-n 0` evaluates all frames. Require explicit `-m`, `-s`, and a unique `-d`
++prefix for each system. Preserve the command, log, true exit code, checkpoint
++SHA256, and dataset identity. Do not overwrite existing detail files silently.
++
++For a native multi-task checkpoint, inspect its branches and pass the admitted
++branch during evaluation:
++
++```bash
++dp --pt show selected.pt model-branch
++dp --pt test -m selected.pt -s held_out/system_000 -n 0 \
++    -d "$detail_prefix" --head SELECTED_BRANCH
++```
++
++A frozen selected `.pt2` is already single-head; do not pass `--head` to it.
++
++## Validate detail outputs
++
++For an energy model, retain the emitted total-energy (`.e.out`),
++energy-per-atom (`.e_peratom.out`), and force (`.f.out`) details. Retain
++virial/stress details only when both reference labels and model outputs exist.
++Require:
++
++- energy rows equal the evaluated frame count;
++- force rows equal `frames * natoms`, with xyz stored as columns;
++- all reference and prediction values are finite;
++- energy-per-atom errors come directly from `.e_peratom.out`, or total-energy
++  errors are divided by `natoms` exactly once.
++
++Reject missing systems, partial frame coverage, reused detail prefixes, and
++results tied to another checkpoint hash.
++
++## Report and decide
++
++For every available label, report per-system MAE, RMSE, units, sample count, and
++the population standard deviation (`ddof=0`) of the corresponding held-out
++reference values. Report an absent label as `N/A`, never zero. Aggregate from all
++retained rows; do not average per-system RMSE values.
++
++Build parity plots from unrounded detail rows, with reference on x, prediction on
++y, an equal-aspect `y=x` line, system identity, checkpoint hash, units, sample
++count, RMSE, and reference-label standard deviation.
++
++Admit the candidate only when every declared held-out system is complete and the
++declared thresholds pass. Training logs, a successful freeze, or a LAMMPS
++canary cannot replace this evaluation.
+diff --git a/machine-learning-potentials/deepmd-python-inference/references/model-artifacts.md b/machine-learning-potentials/deepmd-python-inference/references/model-artifacts.md
+new file mode 100644
+index 0000000..a5c9608
+--- /dev/null
++++ b/machine-learning-potentials/deepmd-python-inference/references/model-artifacts.md
+@@ -0,0 +1,102 @@
++# DeePMD model artifacts for inference
++
++Read this reference when the model is a training checkpoint, its extension is
++`.pt2`, or the correct backend/export path is unclear.
++
++## Identify the artifact
++
++A suffix identifies a serialization/backend route, not necessarily a model
++family. In particular, both DPA3 and DPA4 training checkpoints use `.pt`. Never
++classify a `.pt` checkpoint from its filename alone. Inspect its stored model
++configuration when needed:
++
++```bash
++dp --pt show model.pt descriptor fitting-net type-map
++```
++
++| Artifact | Typical role                      | Inference guidance                                                                                                                                |
++| -------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
++| `.pb`    | TensorFlow frozen model           | Load with `DeepPot` or use `dp test`.                                                                                                             |
++| `.pth`   | Conventional PyTorch frozen model | Load with `DeepPot` or use `dp test`.                                                                                                             |
++| `.pt`    | PyTorch training checkpoint       | Inspect before use. DPA4 supports eager Python evaluation and embedding extraction from a checkpoint; deployment normally uses a frozen artifact. |
++| `.pt2`   | AOTInductor deployment archive    | Use supported inference paths in a compatible runtime; the suffix alone does not imply descriptor hooks, portability, or multi-rank support.      |
++
++Backend selection for inference is normally determined from the model artifact.
++Do not add a backend flag merely from the assumed model family.
++
++## DPA4/SeZM
++
++DPA4/SeZM supports Python evaluation from its `.pt` checkpoint, but a `.pt2`
++archive is the normal frozen deployment artifact. First read
++`dpa4-freeze-policy.md`; choose and record the freeze-time inference environment
++instead of inheriting unknown shell values. Then freeze with:
++
++```bash
++dp --pt freeze -c model.ckpt.pt -o frozen_model
++```
++
++The command writes `frozen_model.pt2` for a detected DPA4/SeZM checkpoint.
++For a multi-task checkpoint, select the head during export with
++`--head SELECTED_BRANCH`; the resulting `.pt2` is already single-head.
++Evaluate the archive with:
++
++```python
++from deepmd.infer import DeepPot
++
++model = DeepPot("frozen_model.pt2")
++energy, force, virial = model.eval(coord, cell, atype)
++```
++
++For labeled data:
++
++```bash
++dp test -m frozen_model.pt2 -s /path/to/system -n 30
++```
++
++`DeepPot.eval` on DPA4/SeZM `.pt2` archives is covered for energy, force,
++virial, and atomic energy. Atomic virial is available only when the archive
++metadata reports `do_atomic_virial=true`; the ordinary non-spin
++`dp --pt freeze` route enables it, but specialized spin or conversion routes
++may not. `dp test` uses the same model dispatch. Both require an installed
++DeePMD-kit/PyTorch runtime compatible with the compiled archive.
++
++Check that `atype` follows the model `type_map` and that coordinates/cells use
++the units and shapes documented by `DeepPot`.
++
++## Descriptors and DPA4 embeddings
++
++Descriptor evaluation is conditional for `.pt2`. It requires an archive that
++contains the serialized `model.json`; metadata-only archives can run the main
++`DeepPot.eval` path but raise `NotImplementedError` for `eval_descriptor`.
++In particular, do not run `dp eval-desc` on a DPA4 `.pt2` produced by the
++`dp --pt freeze` command above, because that export is metadata-only. Use a
++supported checkpoint or verify the archive contents and backend first.
++
++DPA4 additionally exposes model embeddings from a training checkpoint:
++
++```bash
++dp embed -m model.ckpt.pt -s /path/to/system -o embedding.hdf5
++```
++
++`dp embed` supports the DPA4/SeZM `.pt` checkpoint and does not support `.pt2`.
++For a multi-task checkpoint, preserve the selected head explicitly:
++
++```bash
++dp embed -m model.ckpt.pt -s /path/to/system -o embedding.hdf5 --head SELECTED_BRANCH
++```
++
++## Validation
++
++- Confirm that the artifact exists and can be loaded in the target environment.
++- Inspect the stored descriptor when `.pt` could mean DPA3 or DPA4.
++- Confirm the type map before constructing `atype`.
++- Run a small finite energy/force/virial evaluation before a large batch.
++- Treat `.pt2` as a compiled deployment artifact, not a portable checkpoint.
++  Export and validate it with a device and toolchain compatible with the final
++  Python, C++, or LAMMPS runtime.
++
++## References
++
++- [DPA4 export, inference, and embeddings](https://docs.deepmodeling.com/projects/deepmd/en/latest/model/dpa4.html)
++- [Python inference](https://docs.deepmodeling.com/projects/deepmd/en/latest/inference/python.html)
++- [Show model information](https://docs.deepmodeling.com/projects/deepmd/en/latest/model/show-model-info.html)
+diff --git a/machine-learning-potentials/deepmd-train/SKILL.md b/machine-learning-potentials/deepmd-train/SKILL.md
+index d38e785..da6cf80 100644
+--- a/machine-learning-potentials/deepmd-train/SKILL.md
++++ b/machine-learning-potentials/deepmd-train/SKILL.md
+@@ -1,11 +1,11 @@
+ ---
+ name: deepmd-train
+-description: Train DeePMD-kit models with progressive disclosure. Use when the user wants to train a DeePMD-kit potential, prepare an input.json, choose between model families such as se_e2_a/DeepPot-SE and DPA3, run `dp train`, monitor learning curves, freeze checkpoints, or test trained models. Start with model selection and read only the selected model reference under `models/` when model-specific configuration is needed.
++description: Train DeePMD-kit models with progressive disclosure. Use when the user wants to train a DeePMD-kit potential, prepare an input.json, choose between model families such as se_e2_a/DeepPot-SE, DPA3, DPA4/SeZM, and DPA4C, run `dp train`, monitor learning curves, freeze checkpoints, or test trained models. Start with model selection and read only the selected model reference under `models/` when model-specific configuration is needed.
+ compatibility: Requires deepmd-kit installed. The selected backend and model may require PyTorch, TensorFlow, JAX, Paddle, GPU support, or custom OP libraries.
+ license: LGPL-3.0-or-later
+ metadata:
+   author: iProzd
+-  version: '1.1'
++  version: '1.2'
+   repository: https://github.com/deepmodeling/deepmd-kit
+ ---
+ 
+@@ -33,6 +33,8 @@ Available model references:
+ | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+ | [`models/se-e2-a.md`](models/se-e2-a.md) | The user wants a classical DeepPot-SE baseline, broad compatibility, or a smaller/established production model.                          |
+ | [`models/dpa3.md`](models/dpa3.md)       | The user wants a high-accuracy DPA3/LAM workflow, large/diverse datasets, dynamic neighbor selection, or pretrained DPA3-style training. |
++| [`models/dpa4.md`](models/dpa4.md)       | The user wants the PyTorch-only DPA4/SeZM SO(3)-equivariant architecture and its `.pt2` deployment path.                                 |
++| [`models/dpa4c.md`](models/dpa4c.md)     | The user wants the compact DPA4C architecture, PyTorch Exportable training, and optional compressed `.pt2` deployment.                   |
+ 
+ ## Model selection
+ 
+@@ -51,6 +53,8 @@ Recommended defaults:
+ 
+ - Choose **se_e2_a** for a robust baseline, small to medium systems, compatibility-focused workflows, or when compute is limited.
+ - Choose **DPA3** for high accuracy on diverse datasets, LAM-style training, or when the user explicitly asks for DPA3, DPA-3, LiGS, dynamic neighbor selection, or pretrained DPA3 variants.
++- Choose **DPA4/SeZM** when the user explicitly requests it or wants its SO(3)-equivariant message-passing architecture and accepts a GPU-oriented, PyTorch-only workflow. For a new configuration, choose a grade and use a dpa4-<grade>-v20260911 preset.
++- Choose **DPA4C** when the user explicitly requests it or prioritizes compact, high-throughput deployment, including distillation from a DPA4 teacher. For a new configuration, choose a grade and use a dpa4c-<grade>-v20260911 preset.
+ 
+ ## Common workflow
+ 
+@@ -60,7 +64,9 @@ Recommended defaults:
+ dp --version
+ ```
+ 
+-For PyTorch training, use `dp --pt ...`; for TensorFlow, use `dp ...`; for other backends, confirm the installed backend first.
++For conventional PyTorch training, use `dp --pt ...`; DPA4C uses the PyTorch
++Exportable backend, `dp --pt-expt ...`. For TensorFlow, use `dp ...`; for other
++backends, confirm the installed backend first.
+ 
+ ### 2. Confirm training data
+ 
+@@ -77,6 +83,8 @@ Minimum information needed to build `input.json`:
+ 
+ ### 3. Read the selected model reference
+ 
++For new DPA4 and DPA4C inputs, follow the preset workflow first and reserve manual architecture blocks for the advanced path.
++
+ After selecting a model, read the corresponding file under [`models/`](models/) and apply its model-specific configuration, hyperparameters, and caveats.
+ 
+ ### 4. Train
+@@ -104,12 +112,17 @@ Training progress is usually written to `lcurve.out`. Check for:
+ 
+ ### 6. Freeze and test
+ 
++Read the selected model reference before choosing the output format. For
++conventional PyTorch models, a typical flow is:
++
+ ```bash
+ dp --pt freeze -o model.pth
+-dp --pt test -m model.pth -s /path/to/test_system -n 30
++dp test -m model.pth -s /path/to/test_system -n 30
+ ```
+ 
+-Adjust the backend flags and output extension for non-PyTorch models.
++DPA4/SeZM and DPA4C checkpoints instead freeze to `.pt2`; follow the selected
++model reference. DPA4C may additionally be compressed for deployment.
++Adjust the backend and output format for other model families.
+ 
+ ## Agent checklist
+ 
+diff --git a/machine-learning-potentials/deepmd-train/models/dpa4.md b/machine-learning-potentials/deepmd-train/models/dpa4.md
+new file mode 100644
+index 0000000..4a5ce28
+--- /dev/null
++++ b/machine-learning-potentials/deepmd-train/models/dpa4.md
+@@ -0,0 +1,186 @@
++# DPA4 training reference
++
++Read this file only after the user chooses DPA4/SeZM, or when it is the best fit
++for the task. Keep shared data checks and the train/monitor workflow in
++`../SKILL.md`; this file records DPA4-specific choices.
++
++## When to choose DPA4
++
++Choose DPA4 when the user explicitly requests DPA4/SeZM or wants its
++SO(3)-equivariant message-passing architecture and accepts a GPU-oriented,
++PyTorch-only workflow. The aliases `DPA4`, `SeZM`, and `sezm` select the same
++implementation.
++
++DPA4 is not selected merely because a checkpoint ends in `.pt`. Inspect an
++existing checkpoint with:
++
++```bash
++dp --pt show model.pt descriptor fitting-net type-map
++```
++
++## Recommended preset workflow
++
++For a new DPA4/SeZM configuration, choose the family and grade first, then use
++the v20260911 preset for that grade. Available DPA4 grades are nano, mini, neo,
++air, plus, pro, max, and ultra; the name format is
++dpa4-<grade>-v20260911. The compact nano starting point is used by
++examples/water/dpa4/input_preset.json.
++
++The model section of a new energy input should stay small:
++
++```json
++{
++  "model": {
++    "preset": "dpa4-nano-v20260911",
++    "type_map": [
++      "O",
++      "H"
++    ],
++    "descriptor": {
++      "use_amp": true,
++      "seed": 42
++    },
++    "fitting_net": {
++      "seed": 42
++    }
++  }
++}
++```
++
++The preset supplies type, type_map, descriptor, and fitting_net. An explicit
++type_map replaces the preset's 118-element map as a whole. Explicit keys inside
++descriptor or fitting_net merge over the preset and take precedence; use them
++for run-specific settings such as seeds, use_amp, add_chg_spin_ebd,
++default_chg_spin, or vacuum_ref. Do not retain a full manual descriptor and
++fitting-network block beside preset, because those blocks would override the
++architecture the preset is meant to select.
++
++Keep learning_rate, loss, and the complete training section outside this model
++simplification. Start from examples/water/dpa4/input_preset.json and run:
++
++```bash
++cd examples/water/dpa4
++dp --pt train input_preset.json
++```
++
++model.preset expands before argument validation and fine-tuning rules. The
++expanded configuration is the one recorded in out.json.
++
++### Vacuum reference and charge/spin conditioning
++
++fitting_net.vacuum_ref is an explicit modeling choice. It only remains enabled
++when the model has an assigned energy bias through model.preset_out_bias.energy.
++The entries must be isolated-atom energies from the same reference calculation
++and must follow the configured type_map; use the maintained
++examples/water/dpa4/input_e0.json as the shape of this workflow. If no bias is
++assigned, DeePMD-kit disables vacuum_ref.
++
++descriptor.add_chg_spin_ebd and descriptor.default_chg_spin are also explicit
++conditioning choices. They describe charge/spin inputs and defaults; they are
++independent of execution controls such as model.use_compile, model.enable_tf32,
++and freeze-time inference environment variables.
++
++### Advanced architecture overrides
++
++Use manual descriptor and fitting_net architecture blocks only when designing
++an architecture outside the released presets or reproducing an existing
++checkpoint exactly:
++
++```json
++{
++  "model": {
++    "type": "dpa4",
++    "type_map": [
++      "O",
++      "H"
++    ],
++    "descriptor": {
++      "type": "dpa4",
++      "rcut": 6.0,
++      "channels": 32,
++      "lmax": 2
++    },
++    "fitting_net": {
++      "type": "dpa4_ener",
++      "neuron": [
++        192,
++        192,
++        192
++      ]
++    }
++  }
++}
++```
++
++Do not combine this full architecture form with a preset. For fine-tuning,
++preserve the checkpoint's stored descriptor and fitting-network structure;
++do not replace it blindly with a newer v20260911 preset.
++
++## Parameters to choose deliberately
++
++- `rcut` sets the local environment cutoff.
++- On the conservative energy path, `sel` is an initial neighbor-search capacity
++  that grows on demand; it does not truncate the neighbor list. It may also be
++  set to `auto` or `auto:factor` from training data.
++- `lmax`/`l_schedule` and `mmax`/`m_schedule` control angular resolution and are
++  primary accuracy-cost levers.
++- `n_blocks` controls depth; `channels` and `n_radial` control width.
++- `n_focus` and `n_atten_head` control aggregation.
++
++Use documented defaults or a maintained example unless the user has evidence for
++changing these parameters. Do not copy DPA3 descriptor parameters into DPA4.
++
++## Train and monitor
++
++Use the PyTorch backend:
++
++```bash
++dp --pt train input.json
++```
++
++Monitor `lcurve.out`, validation metrics, checkpoint creation, and non-finite
++values. DPA4 also supports advanced property, spin, denoising, ZBL, multitask,
++and LoRA configurations; follow the DPA4 documentation and examples rather than
++combining those features from memory. For checkpoint adaptation and LoRA, use
++the `deepmd-finetune-dpa4` skill.
++
++## Freeze and test
++
++DPA4 checkpoints are `.pt`, but deployment uses an AOTInductor `.pt2` archive.
++Read `../../deepmd-python-inference/references/dpa4-freeze-policy.md` and choose
++the freeze-time inference policy before exporting:
++
++```bash
++dp --pt freeze -c model.ckpt.pt -o frozen_model
++dp test -m frozen_model.pt2 -s /path/to/test_system -n 30
++```
++
++The command detects DPA4/SeZM and appends `.pt2`. DPA4 does not use the ordinary
++TorchScript `.pth` freeze path and does not support model compression. Validate
++the exported archive in the target inference or LAMMPS environment.
++
++If the checkpoint is multi-task, inspect its branches and pass the selected
++head during export:
++
++```bash
++dp --pt show model.ckpt.pt model-branch descriptor type-map
++dp --pt freeze -c model.ckpt.pt -o frozen_model --head SELECTED_BRANCH
++```
++
++The frozen `.pt2` is a selected single-head artifact.
++
++## DPA4 checklist
++
++- [ ] The PyTorch backend is available.
++- [ ] `model.type` is `dpa4`/`sezm`, or the stored checkpoint configuration proves it.
++- [ ] `type_map`, data labels, and train/validation systems are consistent.
++- [ ] Parameter changes are based on DPA4 documentation, not DPA3 defaults.
++- [ ] Training and validation metrics are finite.
++- [ ] The selected checkpoint is exported to `.pt2` and tested.
++- [ ] `dp compress` is not used for DPA4.
++
++## References
++
++- [DPA4 model documentation](https://docs.deepmodeling.com/projects/deepmd/en/latest/model/dpa4.html)
++- [DPA4 training example](../../../examples/water/dpa4/input_preset.json)
++- [Energy model training](https://docs.deepmodeling.com/projects/deepmd/en/latest/model/train-energy.html)
+diff --git a/machine-learning-potentials/deepmd-train/models/dpa4c.md b/machine-learning-potentials/deepmd-train/models/dpa4c.md
+new file mode 100644
+index 0000000..8feaa07
+--- /dev/null
++++ b/machine-learning-potentials/deepmd-train/models/dpa4c.md
+@@ -0,0 +1,164 @@
++# DPA4C training reference
++
++Read this file only after the user chooses DPA4C, or when it is the best fit for
++the task. Keep shared data checks and the train/monitor workflow in
++`../SKILL.md`; this file records DPA4C-specific choices.
++
++## Backend contract
++
++DPA4C uses the PyTorch Exportable backend. Train it with:
++
++```bash
++dp --pt-expt train input.json
++```
++
++Do not substitute `dp --pt`. DPA4/SeZM uses the conventional PyTorch backend,
++whereas DPA4C is implemented for `--pt-expt`.
++
++## Recommended preset workflow
++
++For a new DPA4C configuration, choose the family and grade first, then use a
++v20260911 preset. Available grades are nano, mini, neo, air, and plus; the name
++format is dpa4c-<grade>-v20260911. The maintained
++examples/water/dpa4c/input.json uses dpa4c-nano-v20260911.
++
++The model section of a new energy input should contain the preset, the dataset's
++type_map, and task-specific additions only:
++
++```json
++{
++  "model": {
++    "preset": "dpa4c-nano-v20260911",
++    "type_map": [
++      "O",
++      "H"
++    ],
++    "descriptor": {
++      "use_amp": false,
++      "seed": 42
++    },
++    "fitting_net": {
++      "seed": 42
++    }
++  }
++}
++```
++
++The preset supplies type_map, descriptor, and fitting_net. An explicit type_map
++replaces the preset's 118-element map as a whole. Explicit descriptor and
++fitting_net keys merge over the preset and take precedence. Do not leave the old
++full architecture blocks beside preset, because those keys would override the
++selected grade.
++
++Keep learning_rate, loss, and training outside the architecture simplification.
++DPA4C uses dp --pt-expt train; execution controls training.enable_compile and
++training.enable_tf32 stay in training and are independent of model conditioning.
++Do not put `use_compile` under `model` for DPA4C.
++
++### Vacuum reference and charge/spin conditioning
++
++fitting_net.vacuum_ref is an explicit modeling choice. It requires an assigned
++energy bias through model.preset_out_bias.energy, with isolated-atom energies
++from the same reference calculation and entries aligned with the configured
++type_map. Without an assigned bias, DeePMD-kit disables vacuum_ref. The
++maintained isolated-atom examples show the preset_out_bias shape and reference
++data contract.
++
++If the task needs charge/spin conditioning, add descriptor.add_chg_spin_ebd and,
++when a default state is required, descriptor.default_chg_spin. These are
++model-input choices and are not interchangeable with compile, TF32, AMP, or
++other execution flags.
++
++### Advanced architecture overrides
++
++Use explicit descriptor and fitting-network architecture blocks only when
++reproducing a compatible checkpoint or intentionally designing a configuration
++outside the released presets:
++
++```json
++{
++  "model": {
++    "type_map": [
++      "O",
++      "H"
++    ],
++    "descriptor": {
++      "type": "dpa4c",
++      "rcut": 6.0,
++      "channels": 32,
++      "lmax": 2,
++      "radial_modes": 0
++    },
++    "fitting_net": {
++      "type": "ener",
++      "neuron": [
++        192,
++        192,
++        192
++      ]
++    }
++  }
++}
++```
++
++Do not combine this full architecture form with a preset. During fine-tuning,
++preserve the checkpoint's architecture and task-specific fields instead of
++blindly replacing them with a newer preset.
++
++## Parameters to choose deliberately
++
++- `channels` is the primary width and memory/throughput control.
++- `lmax` controls angular resolution.
++- `radial_modes` adds type-pair radial flexibility without widening the
++  per-atom state.
++- `use_amp` is the descriptor's CUDA bf16 policy and is independent of
++  `training.enable_compile` and `training.enable_tf32`.
++- DPA4C has no `sel`; it consumes a carry-all neighbor graph within `rcut`.
++
++Use a compression-supported configuration when compressed deployment is
++required: `channels` in `{8, 16, 32, 64, 128}`, `lmax` in `{2, 3, 4}`, and
++`radial_modes` in `{0, 2, 4, 8}`.
++
++## Freeze, compress, and test
++
++Choose the inference policy before export. The three values below are captured
++in the archive rather than re-evaluated when LAMMPS loads it. For
++molecular-dynamics production, a conservative accelerated policy is:
++
++```bash
++export DP_CUDA_INFER=1
++export DP_TF32_INFER=0
++export DP_AMP_INFER=0
++```
++
++A compressed archive needs `DP_CUDA_INFER` of at least `1` to use the fused
++path. Validate more aggressive precision settings against the target system.
++
++```bash
++dp --pt-expt freeze -c model.ckpt.pt -o frozen_model --lower-kind graph
++dp --pt-expt compress -i frozen_model.pt2 -o compressed_model.pt2
++dp test -m compressed_model.pt2 -s /path/to/test_system -n 30
++```
++
++Keep the same target physical compute node and allocation for freeze,
++compression, validation, and production unless portability has been independently
++validated for that exact device and toolchain. Validate both the plain `.pt2`
++archive and, when used, the compressed archive before production MD.
++
++## DPA4C checklist
++
++- [ ] The command uses `dp --pt-expt`.
++- [ ] `model.descriptor.type` is `dpa4c`.
++- [ ] `training.enable_compile` and `training.enable_tf32` are set deliberately.
++- [ ] No DPA4-only `model.use_compile` or `model.enable_tf32` was copied in.
++- [ ] The first compiled step is allowed extra warm-up time.
++- [ ] The checkpoint is exported to `.pt2` and tested.
++- [ ] Compression constraints are satisfied when `dp --pt-expt compress` is used.
++- [ ] Freeze-time inference variables and the target runtime are recorded.
++- [ ] Export and production stay on the target node unless portability is proven.
++
++## References
++
++- [DPA4C model documentation](../../../doc/model/dpa4c.md)
++- [DPA4C training example](../../../examples/water/dpa4c/input.json)
++- [Energy model training](https://docs.deepmodeling.com/projects/deepmd/en/latest/model/train-energy.html)
+diff --git a/molecular-dynamics/lammps-deepmd/SKILL.md b/molecular-dynamics/lammps-deepmd/SKILL.md
+index 4ec87c9..0305a05 100644
+--- a/molecular-dynamics/lammps-deepmd/SKILL.md
++++ b/molecular-dynamics/lammps-deepmd/SKILL.md
+@@ -1,13 +1,13 @@
+ ---
+ name: lammps-deepmd
+ description: >
+-  A tool and knowledge base for running molecular dynamics (MD) simulations in LAMMPS with the DeePMD-kit plugin. It handles input script preparation, ensemble selection (NVE/NVT/NPT), and job execution via `uv` or offline binaries.
+-  USE WHEN you need to set up, write, explain, or execute a LAMMPS molecular dynamics simulation using a DeePMD machine learning potential (e.g., `graph.pb`).
+-compatibility: Requires LAMMPS with DeePMD-kit support. Online mode prefers `uvx --from lammps --with deepmd-kit[gpu,torch,lmp] lmp`; offline mode requires a user-provided LAMMPS executable or module.
++  A tool and knowledge base for running molecular dynamics (MD) simulations in LAMMPS with the DeePMD-kit plugin. It handles input script preparation, ensemble selection (NVE/NVT/NPT), and execution with a verified DeePMD-enabled runtime.
++  USE WHEN you need to set up, write, explain, or execute a LAMMPS molecular dynamics simulation using a DeePMD machine learning potential (for example `.pb`, `.pth`, or DPA4/SeZM `.pt2`).
++compatibility: Requires a user-provided, containerized, or source-built LAMMPS runtime with DeePMD-kit support. Verify capabilities in the target environment.
+ license: LGPL-3.0-or-later
+ metadata:
+   author: OpenClaw
+-  version: '1.0'
++  version: '1.1'
+   repository: https://github.com/deepmodeling/deepmd-kit
+   lammps_docs: https://docs.lammps.org/
+ ---
+@@ -18,51 +18,51 @@ Use this skill when the user wants to run molecular dynamics in LAMMPS with a De
+ 
+ ## Agent responsibilities
+ 
+-1. Confirm the available execution mode:
+-   - **Online mode**: if internet access is available and `uv` is installed, prefer
+-     `uvx --from lammps --with deepmd-kit[gpu,torch,lmp] lmp ...`
+-   - **Offline mode**: do **not** guess the executable. Ask the user which LAMMPS command, module, or container should be used.
++1. Confirm the available execution runtime:
++
++   - For a build from the current checkout, record the resolved Git commit SHA.
++   - For an installed binary, module, or container, record the exact command and
++     runtime versions.
++   - Do not infer capabilities from a future release or an artifact suffix.
++
+ 1. Confirm the minimum simulation inputs:
++
+    - structure/data file (for example `data.system`)
+-   - DeePMD model file (for example `graph.pb` or compressed model)
+-   - atom type to element mapping, including required per-type masses if the data file does not define them
++   - DeePMD model artifact; read `references/model-deployment.md` for a training
++     checkpoint, DPA4/SeZM, or an unclear export path
++   - atom type to element mapping, including required per-type masses if the data
++     file does not define them
+    - target ensemble (NVE, NVT, NPT, or another explicitly requested setup)
+    - temperature, pressure if applicable, timestep, and total number of steps
+-1. Write the LAMMPS input script yourself instead of asking the user to hand-write it.
+-1. Keep the example readable and fully explained. If you include an example input script, explain what **every command** does.
+-1. When possible, validate command availability against the LAMMPS docs or local `lmp -h` output before execution.
+-1. Report clearly which command was run, which files were used, and where outputs were written.
+-
+-## Decide the execution mode
+ 
+-### Online mode (preferred when internet access is available)
+-
+-Use:
++1. Write the LAMMPS input script yourself instead of asking the user to hand-write it.
+ 
+-```bash
+-uvx --from lammps --with deepmd-kit[gpu,torch,lmp] lmp -in input.lammps
+-```
++1. Keep the example readable and fully explained. If you include an example input script, explain what **every command** does.
+ 
+-If you need to inspect the local command-line help:
++1. When possible, validate command availability against the LAMMPS docs or local `lmp -h` output before execution.
+ 
+-```bash
+-uvx --from lammps --with deepmd-kit[gpu,torch,lmp] lmp -h | tee /dev/tty
+-```
++1. Report clearly which command was run, which files were used, and where outputs were written.
+ 
+-Notes:
++## Verify the execution runtime
+ 
+-- This is the preferred path because it can provision LAMMPS and DeePMD-kit on demand.
+-- The `gpu,torch,lmp` extras match the requested runtime pattern from the user.
+-- If the environment is slow or the packages are large, warn the user that the first run may take time.
++Use an existing site-installed binary, container, or build from the current
++checkout. Before execution:
+ 
+-### Offline mode
++- record `git rev-parse HEAD` for a source checkout, or record `dp --version` and
++  the exact installed package/container identity;
++- inspect the selected LAMMPS command with `-h` and confirm that it provides the
++  required DeePMD pair style and model-artifact route;
++- follow `references/model-deployment.md` for DPA4 `.pt2` and multi-rank
++  capability gates;
++- do not install or upgrade packages silently, and do not claim support from an
++  unreleased version number.
+ 
+-If internet access is unavailable or the user explicitly wants a site-installed binary, ask a concrete question such as:
++If no verified runtime is available, ask a concrete question such as:
+ 
+ - "Which LAMMPS executable should I use, for example `lmp`, `lmp_mpi`, `mpirun -np 8 lmp`, or an HPC module command?"
+-- "Do you already have a DeePMD-enabled LAMMPS build on this machine or cluster?"
++- "Do you already have a DeePMD-enabled LAMMPS build or container on this machine or cluster?"
+ 
+-Do not invent a binary name or module name.
++Do not invent a binary, module, container, or package version.
+ 
+ ## Minimal information to collect
+ 
+@@ -76,14 +76,15 @@ Ask only for what is missing:
+ - timestep
+ - run length in steps
+ - whether velocities should be generated from scratch
+-- preferred execution command if offline
++- execution command, module, container, or source checkout
+ 
+ ## Recommended workflow
+ 
+ 1. Inspect available files in the working directory.
++1. Read `references/model-deployment.md` when the model needs export, its artifact type is unclear, or explicit element mapping is required.
+ 1. Draft `input.lammps`.
+ 1. Explain the script to the user if they asked for an explanation or if the script is nontrivial.
+-1. Run a short smoke test first when reasonable.
++1. Follow the staged canary in `references/commands-and-workflow.md` before production.
+ 1. Run the full simulation.
+ 1. Summarize outputs such as `log.lammps`, dump trajectories, restart files, and thermodynamic data.
+ 
+@@ -104,15 +105,17 @@ atom_style      atomic
+ 
+ neighbor        1.0 bin
+ 
++atom_modify     map yes
+ read_data       data.system
+ mass            1 28.0855
+ mass            2 15.999
+ pair_style      deepmd graph_compressed.pb
+-pair_coeff      * *
++pair_coeff      * * Si O
+ 
+ thermo_style    custom step temp pe ke etotal press vol lx ly lz xy xz yz
+ thermo          ${THERMO_FREQ}
+-dump            1 all custom ${DUMP_FREQ} traj.lammpstrj id type x y z
++dump            1 all custom ${DUMP_FREQ} traj.lammpstrj id type element x y z
++dump_modify     1 element Si O sort id
+ 
+ velocity        all create ${TEMP} 743574
+ fix             1 all nvt temp ${TEMP} ${TEMP} ${TAU_T}
+@@ -169,9 +172,15 @@ run             ${NSTEPS}
+   - Uses the `bin` neighbor-building method.
+   - Neighbor lists help LAMMPS efficiently find nearby atoms for force evaluation.
+ 
++- `atom_modify map yes`
++
++  - Creates an atom-ID map required by the documented DPA4 route.
++  - It must appear before `read_data`.
++
+ - `read_data data.system`
+ 
+   - Reads the initial atomic structure, atom types, simulation box, and related information from the LAMMPS data file `data.system`.
++  - The data file's first line is a skipped title; actual header counts begin after it.
+   - Replace this filename with the actual user file.
+ 
+ - `mass 1 28.0855`, `mass 2 15.999`
+@@ -185,10 +194,11 @@ run             ${NSTEPS}
+   - Loads the DeePMD model from `graph_compressed.pb`.
+   - Replace the model filename with the actual model path, for example `graph.pb`, `graph-compress.pb`, or another supported exported model.
+ 
+-- `pair_coeff * *`
++- `pair_coeff * * Si O`
+ 
+-  - Activates the previously selected pair style for all atom types.
+-  - For DeePMD this often takes the simple form `* *` because the mapping is embedded in the model workflow rather than through conventional pairwise parameters.
++  - Activates the pair style for all local atom types.
++  - Maps LAMMPS type 1 to `Si` and type 2 to `O`, matching the masses and dump labels.
++  - Inspect the actual model type map and replace this example order; do not infer it from integer type IDs.
+ 
+ - `thermo_style custom step temp pe ke etotal press vol lx ly lz xy xz yz`
+ 
+@@ -207,14 +217,15 @@ run             ${NSTEPS}
+ 
+   - Prints the thermo block every `THERMO_FREQ` timesteps.
+ 
+-- `dump 1 all custom ${DUMP_FREQ} traj.lammpstrj id type x y z`
++- `dump 1 all custom ${DUMP_FREQ} traj.lammpstrj id type element x y z`
+ 
+-  - Creates dump ID `1`.
+-  - Dumps atoms from group `all`.
+-  - Uses the `custom` dump format.
+-  - Writes every `DUMP_FREQ` steps.
+-  - Saves to `traj.lammpstrj`.
+-  - Outputs per-atom columns `id type x y z`.
++  - Creates dump ID `1` and writes every `DUMP_FREQ` steps.
++  - Saves `id`, local type, mapped element, and coordinates to `traj.lammpstrj`.
++
++- `dump_modify 1 element Si O sort id`
++
++  - Uses the same local type-to-element order as `pair_coeff`.
++  - Sorts each frame by stable atom ID, not by element or model type-map position.
+ 
+ - `velocity all create ${TEMP} 743574`
+ 
+@@ -277,21 +288,9 @@ When using NPT, it is often useful to keep `vol`, `lx`, `ly`, and `lz` in the th
+ 
+ ## Execution templates
+ 
+-### Online run
+-
+-```bash
+-uvx --from lammps --with deepmd-kit[gpu,torch,lmp] lmp -in input.lammps
+-```
+-
+-### Online help
+-
+-```bash
+-uvx --from lammps --with deepmd-kit[gpu,torch,lmp] lmp -h | tee /dev/tty
+-```
+-
+-### Offline run
++### Verified run
+ 
+-Only after the user specifies the executable, use a command such as one of these exact patterns:
++Only after the runtime is identified, use the matching command, for example:
+ 
+ ```bash
+ lmp -in input.lammps
+@@ -299,7 +298,7 @@ mpirun -np 8 lmp_mpi -in input.lammps
+ srun lmp -in input.lammps
+ ```
+ 
+-The agent must not choose one of these on its own without user guidance in offline mode.
++Do not choose one of these without evidence that it is the verified runtime.
+ 
+ ## Output checklist
+ 
+@@ -321,3 +320,4 @@ After a run, report at least:
+ - DeePMD-kit: https://github.com/deepmodeling/deepmd-kit
+ - User-provided tutorial reference: https://github.com/tongzhugroup/Chapter13-tutorial/blob/master/input.lammps
+ - Detailed notes: `references/commands-and-workflow.md`
++- Model artifact, export, and type-mapping notes: `references/model-deployment.md`
+diff --git a/molecular-dynamics/lammps-deepmd/assets/input.nvt.lammps b/molecular-dynamics/lammps-deepmd/assets/input.nvt.lammps
+index 9031770..c751ee0 100644
+--- a/molecular-dynamics/lammps-deepmd/assets/input.nvt.lammps
++++ b/molecular-dynamics/lammps-deepmd/assets/input.nvt.lammps
+@@ -7,6 +7,7 @@ variable        TAU_T           equal 0.1
+ units           metal
+ boundary        p p p
+ atom_style      atomic
++atom_modify     map yes
+ 
+ neighbor        1.0 bin
+ 
+@@ -14,11 +15,12 @@ read_data       data.system
+ mass            1 28.0855
+ mass            2 15.999
+ pair_style      deepmd graph_compressed.pb
+-pair_coeff      * *
++pair_coeff      * * Si O
+ 
+ thermo_style    custom step temp pe ke etotal press vol lx ly lz xy xz yz
+ thermo          ${THERMO_FREQ}
+-dump            1 all custom ${DUMP_FREQ} traj.lammpstrj id type x y z
++dump            1 all custom ${DUMP_FREQ} traj.lammpstrj id type element x y z
++dump_modify     1 element Si O sort id
+ 
+ velocity        all create ${TEMP} 743574
+ fix             1 all nvt temp ${TEMP} ${TEMP} ${TAU_T}
+diff --git a/molecular-dynamics/lammps-deepmd/references/commands-and-workflow.md b/molecular-dynamics/lammps-deepmd/references/commands-and-workflow.md
+index 7365057..48edb9e 100644
+--- a/molecular-dynamics/lammps-deepmd/references/commands-and-workflow.md
++++ b/molecular-dynamics/lammps-deepmd/references/commands-and-workflow.md
+@@ -7,38 +7,45 @@ This reference expands the main skill with practical operating guidance.
+ 1. Prefer small, explicit input scripts over clever but opaque templates.
+ 1. Explain every command in the example script, because many users treat the example as a starting point for their own production run.
+ 1. If the user asks to run a simulation, always confirm the structure file and DeePMD model file before execution.
+-1. If the user asks for offline execution, ask which exact LAMMPS command should be used instead of guessing.
++1. Ask which exact LAMMPS command, module, container, or source-built runtime should be used instead of guessing or installing one silently.
++1. Keep shell environment variables and LAMMPS variables distinct; pass values
++   with an explicit LAMMPS mechanism instead of copying shell syntax into input.
++1. Keep a vacuum or nonperiodic slab axis fixed; do not barostat that direction
++   unless the scientific task explicitly requires changing it.
+ 1. If the user only asks for a template, do not overcomplicate it with advanced computes or fixes unless they are needed.
+ 
+-## Suggested smoke test strategy
++## Suggested canary strategy
+ 
+-Before a long production run, consider a short test such as:
++Before a long production run, stage validation as:
+ 
+-```lammps
+-run 100
++```text
++run 0 -> short NVE when physically appropriate -> short requested ensemble -> production
+ ```
+ 
+-This helps catch obvious issues such as:
++Check the complete LAMMPS exit code and log at every stage. A canary passes only
++when the model loads, thermodynamic values are finite, the atom count is stable,
++and early temperature, pressure, and controlled variables are physically
++compatible with the initial state. Exit code zero alone is insufficient.
+ 
+-- missing model file
+-- unsupported pair style in the local LAMMPS build
+-- malformed data file
+-- missing per-type masses in the data file or input script
+-- immediate numerical instability
++This catches obvious issues such as:
+ 
+-Then replace the short run with the intended production length.
++- unsupported model artifact or pair style in the selected runtime;
++- malformed data headers, boxes, coordinates, or triclinic tilt factors;
++- missing masses or inconsistent element/type mapping;
++- immediate numerical instability or lost atoms.
+ 
+ ## Typical files in a DeePMD-LAMMPS job
+ 
+ - `input.lammps`: input script
+ - `data.system`: atomic structure and box
+-- `graph.pb` or `graph_compressed.pb`: DeePMD model
++- a supported DeePMD deployment artifact such as `.pb`, `.pth`, or DPA4/SeZM `.pt2`; see `model-deployment.md`
+ - `log.lammps`: main textual log
+ - `traj.lammpstrj`: trajectory output
+ 
+ ## Caution points
+ 
+ - The correct timestep depends on the physical system and the DeePMD model quality.
++- The first line of a LAMMPS data file is a skipped title; put header counts after it.
+ - Ensure every atom type has a mass, either in the LAMMPS data file `Masses` section or via explicit `mass` commands after `read_data`.
+ - `velocity ... create ...` should usually not be repeated when continuing from a restart.
+ - NPT settings need physically sensible damping constants; avoid copying values blindly.
+diff --git a/molecular-dynamics/lammps-deepmd/references/model-deployment.md b/molecular-dynamics/lammps-deepmd/references/model-deployment.md
+new file mode 100644
+index 0000000..5ed3d3a
+--- /dev/null
++++ b/molecular-dynamics/lammps-deepmd/references/model-deployment.md
+@@ -0,0 +1,169 @@
++# DeePMD model deployment in LAMMPS
++
++Read this reference when choosing a model artifact, exporting a checkpoint, or
++mapping LAMMPS atom types to model elements. General simulation setup and
++execution remain in `commands-and-workflow.md`.
++
++## Choose the model artifact
++
++A training checkpoint is not automatically a LAMMPS deployment artifact. The
++`.pt` suffix also does not distinguish DPA3 from DPA4. Inspect an unfamiliar
++PyTorch checkpoint before choosing an export path:
++
++```bash
++dp --pt show model.pt descriptor fitting-net type-map
++```
++
++| Model artifact                     | Deployment route                                                                  |
++| ---------------------------------- | --------------------------------------------------------------------------------- |
++| TensorFlow frozen `.pb`            | Use directly with a compatible `pair_style deepmd`.                               |
++| Conventional PyTorch frozen `.pth` | Use directly with a compatible DeePMD-enabled LAMMPS build.                       |
++| PyTorch checkpoint `.pt`           | Inspect the stored model configuration and freeze using its model-specific route. |
++| AOTInductor archive `.pt2`         | Inspect its metadata and use only with a compatible DeePMD-enabled LAMMPS build.  |
++
++Do not call a DPA4 `.pt2` archive a compressed model: DPA4 does not support
++`dp compress`.
++
++## DPA4/SeZM deployment
++
++Before export, read
++`../../deepmd-python-inference/references/dpa4-freeze-policy.md` and explicitly
++choose the freeze-time inference environment. Then freeze a DPA4/SeZM checkpoint
++with the standard PyTorch command:
++
++```bash
++dp --pt freeze -c model.ckpt.pt -o frozen_model
++```
++
++The backend detects DPA4/SeZM and writes `frozen_model.pt2`. Validate the archive
++in the actual target environment. For a multi-task checkpoint, select the head
++during export:
++
++```bash
++dp --pt freeze -c model.ckpt.pt -o frozen_model --head SELECTED_BRANCH
++```
++
++Create and consume the archive on the same target physical compute node and
++allocation: inspect the native checkpoint -> freeze `.pt2` -> `run 0` -> bounded
++MD -> production. Do not freeze in job or node A and move the archive to B unless
++portability has been independently validated for that exact device and toolchain.
++
++Two DPA4 `.pt2` export contracts exist. `dp --pt freeze` uses the DPA4-specific
++`edge_vec` ABI. `dp --pt-expt freeze --lower-kind graph` uses the NeighborGraph
++ABI. They share a suffix but are not interchangeable contracts, and a `.pt2`
++suffix alone does not prove multi-rank support. A multi-rank archive must report
++`has_comm_artifact=true` and contain
++`model/extra/forward_lower_with_comm.pt2`.
++
++## DPA4C deployment
++
++DPA4C uses the PyTorch Exportable backend. Choose the inference policy before
++export because `DP_CUDA_INFER`, `DP_TF32_INFER`, and `DP_AMP_INFER` are captured
++in the exported archive. A conservative accelerated policy for molecular
++dynamics is:
++
++```bash
++export DP_CUDA_INFER=1
++export DP_TF32_INFER=0
++export DP_AMP_INFER=0
++dp --pt-expt freeze -c model.ckpt.pt -o frozen_model --lower-kind graph
++dp --pt-expt compress -i frozen_model.pt2 -o compressed_model.pt2
++```
++
++A compressed DPA4C archive needs `DP_CUDA_INFER` of at least `1` to use the
++fused path. Higher precision-policy settings require task-specific accuracy and
++stability validation before molecular-dynamics production.
++
++Create and consume DPA4C archives on the same target physical compute node and
++allocation: inspect the native checkpoint -> freeze `.pt2` -> compress `.pt2`
++when used -> `run 0` -> bounded MD -> production. Do not export in job or node A
++and move the archive to B unless portability has been independently validated
++for that exact device and toolchain.
++
++A basic energy-model input uses:
++
++```lammps
++atom_style      atomic
++atom_modify     map yes
++read_data       data.system
++
++pair_style      deepmd frozen_model.pt2
++pair_coeff      * * O H
++```
++
++`atom_modify map yes` must appear before `read_data` for the documented DPA4
++route. Ordinary DPA4 energy models use `pair_style deepmd`; spin models may
++require a different documented route and must not be treated as ordinary energy
++models without inspection.
++
++Single-rank DPA4 execution is covered for supported `edge_vec`, graph, and
++dense/nlist archives. Multi-rank execution is supported only when the archive
++contains the with-communication artifact required by its ABI; fail closed when
++that metadata or nested artifact is absent.
++
++## Atom-type mapping
++
++LAMMPS atom types, dataset type indices, and model types are separate namespaces.
++Inspect the artifact's ordered type map, for example with
++`dp --pt show model.pt type-map`, and treat element identity as the bridge.
++For DeePMD data with `type_map.raw`, decode each zero-based `type.raw` index
++through that ordered map. Without `type_map.raw`, require provenance that dataset
++indices already follow the candidate model's ordered type map. Fail closed when
++neither contract is established; do not reuse a dataset integer as a LAMMPS type.
++
++Use compact one-based LAMMPS types for the elements present in the structure and
++write the same element order in masses, `pair_coeff`, and dump metadata:
++
++```lammps
++mass            1 15.999
++mass            2 1.008
++pair_coeff      * * O H
++dump            1 all custom 100 traj.lammpstrj id type element x y z
++dump_modify     1 element O H sort id
++```
++
++Here LAMMPS type 1 maps to `O` and type 2 maps to `H`. `dump_modify ... element`
++labels each local type with that same mapping, while `sort id` gives a stable
++per-frame atom order. Do not sort atoms by element or model type-map position.
++Require that:
++
++- every LAMMPS atom type has a mass;
++- every mapped element is supported by the inspected model type map;
++- `pair_coeff`, masses, and dump element labels share one LAMMPS type order;
++- the structure's atom and species counts are unchanged during conversion.
++
++An implicit `pair_coeff * *` is acceptable only when the model and LAMMPS type
++orders have been verified to match. Prefer explicit element names for auditable
++workflows.
++
++## LAMMPS data and box checks
++
++- The first line of a LAMMPS data file is a title and is skipped by `read_data`;
++  place the actual header counts after it.
++- Put `atom_modify map yes` before `read_data` for the documented DPA4 route.
++- For a restricted triclinic box, preserve the tilt mapping `xy = b_x`,
++  `xz = c_x`, and `yz = c_y`; never write `c_z` or `lz` into `yz`.
++- After conversion, compare atom count, species counts, and box volume with the
++  source structure before running dynamics.
++
++## Pre-production validation
++
++1. Confirm the model loads without format or backend errors.
++1. Keep DPA4/DPA4C export, `run 0`, canary, and production on the same target
++   physical compute node and allocation unless artifact portability is proven.
++1. For multi-rank execution, verify the archive's communication metadata and
++   nested with-comm artifact before launching MPI.
++1. Stage `run 0` -> short NVE when physically appropriate -> short requested
++   ensemble -> production; do not jump from a successful load to a long run.
++1. Require finite thermodynamics, stable atom count, and no mapping, box, or
++   lost-atom errors. Exit code zero alone is not a passed canary.
++1. Require early temperature, pressure, and controlled variables to remain
++   physically compatible with the initial state and requested ensemble.
++1. Preserve the generated data and input files, model path and SHA256, runtime
++   identity, command, complete log, and true exit code.
++
++## References
++
++- [DPA4 export and LAMMPS](https://docs.deepmodeling.com/projects/deepmd/en/latest/model/dpa4.html)
++- [DPA4C export and LAMMPS](https://docs.deepmodeling.com/projects/deepmd/en/latest/model/dpa4c.html)
++- [DeePMD-kit LAMMPS commands](https://docs.deepmodeling.com/projects/deepmd/en/latest/third-party/lammps-command.html)
+diff --git a/sync-state.toml b/sync-state.toml
+index da705d8..b0dde30 100644
+--- a/sync-state.toml
++++ b/sync-state.toml
+@@ -12,14 +12,14 @@ last_upstream_ref = "master"
+ updated_at = "2026-06-03T14:01:38.375681+00:00"
+ 
+ [jobs."deepmd-python-inference"]
+-last_upstream_commit = "65c04205a1509df8bb1ce75702a5e3dda1613e95"
++last_upstream_commit = "cc7fdd785cc1c746268ba96b7244c5757147f75c"
+ last_upstream_ref = "master"
+-updated_at = "2026-06-03T14:01:47.440654+00:00"
++updated_at = "2026-10-25T06:40:49.506539+00:00"
+ 
+ [jobs."deepmd-train"]
+-last_upstream_commit = "1050e46ca645c866bbbc327cc8f8d938cfa82371"
++last_upstream_commit = "cc7fdd785cc1c746268ba96b7244c5757147f75c"
+ last_upstream_ref = "master"
+-updated_at = "2026-06-19T07:35:00+00:00"
++updated_at = "2026-10-25T06:40:59.301923+00:00"
+ 
+ [jobs."dpdata-cli"]
+ last_upstream_commit = "85ae95d3396eb01bcdb25eb399928bf48872900f"
+@@ -47,9 +47,9 @@ last_upstream_ref = "master"
+ updated_at = "2026-09-21T12:36:46.272521+00:00"
+ 
+ [jobs."lammps-deepmd"]
+-last_upstream_commit = "5156c408b817342d190b67b6f0d922447663e5d5"
++last_upstream_commit = "cc7fdd785cc1c746268ba96b7244c5757147f75c"
+ last_upstream_ref = "master"
+-updated_at = "2026-05-08T08:53:34.085745+00:00"
++updated_at = "2026-10-25T06:41:05.813562+00:00"
+ 
+ [jobs."reacnetgenerator"]
+ last_upstream_commit = "84612a228a0c47ba4c22caef7942b30e20aa18dd"

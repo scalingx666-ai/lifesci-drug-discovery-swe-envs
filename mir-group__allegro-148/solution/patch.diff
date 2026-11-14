@@ -1,0 +1,60 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 02f0c62..4bb5e34 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -9,6 +9,9 @@ Most recent change on the bottom.
+ 
+ ## [Unreleased]
+ 
++### Changed
++- `Contracter` uses a channel-batched `torch.bmm` instead of materializing an `[edges, channels, i, j, k]` tensor when not using the Triton/CuEquivariance kernels: faster, and less memory outside AOTInductor
++
+ ## [0.8.3]
+ 
+ ### Added
+diff --git a/allegro/nn/_strided/_contract.py b/allegro/nn/_strided/_contract.py
+index 521f121..b281797 100644
+--- a/allegro/nn/_strided/_contract.py
++++ b/allegro/nn/_strided/_contract.py
+@@ -221,8 +221,17 @@ def _contract_conv(
+             # zui, zuj -> zuij
+             outer = x1.unsqueeze(-1) * x2.unsqueeze(-2)
+             if self.path_channel_coupling:
+-                # zuij, uijk -> zuk
+-                out = torch.sum(outer.unsqueeze(-1) * ww3j, (2, 3))
++                # zuij, uijk -> zuk, as a matmul batched over channels u:
++                # u[z(ij)] @ u[(ij)k] -> u[zk] -> zuk (transposed view)
++                # avoids materializing a [z, u, i, j, k] tensor
++                out = torch.bmm(
++                    outer.view(
++                        outer.size(0), self.mul, self.base_dim1 * self.base_dim2
++                    ).transpose(0, 1),
++                    ww3j.view(
++                        self.mul, self.base_dim1 * self.base_dim2, self.base_dim_out
++                    ),
++                ).transpose(0, 1)
+             else:
+                 # (zu)(ij), (ij)k -> (zu)k -> zuk
+                 out = torch.mm(
+diff --git a/tests/nn/test_contract_basic.py b/tests/nn/test_contract_basic.py
+index 33c8b7a..f6b9786 100644
+--- a/tests/nn/test_contract_basic.py
++++ b/tests/nn/test_contract_basic.py
+@@ -15,7 +15,7 @@
+ @pytest.mark.parametrize("mul", [3, 8])
+ @pytest.mark.parametrize("dtype", ["float32", "float64"])
+ @pytest.mark.parametrize(
+-    "device", ["cpu"] + ["cuda"] if torch.cuda.is_available() else []
++    "device", ["cpu"] + (["cuda"] if torch.cuda.is_available() else [])
+ )
+ def test_contract_jit(
+     irreps_in1,
+@@ -116,7 +116,7 @@ def _strided_to_cat(irreps, mul, x):
+ @pytest.mark.parametrize("irrep_normalization", [None, "component"])
+ @pytest.mark.parametrize("dtype", ["float32", "float64"])
+ @pytest.mark.parametrize(
+-    "device", ["cpu"] + ["cuda"] if torch.cuda.is_available() else []
++    "device", ["cpu"] + (["cuda"] if torch.cuda.is_available() else [])
+ )
+ def test_like_tp(
+     irreps_in1,

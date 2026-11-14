@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/NVIDIA__skills-865"
+description = "chore(metadata): regenerate metadata.json, skills.sh.json, benchmarks.json, and versions.json"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "skills",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "NVIDIA/skills"
+ref = "ba4c5a72b494dff7795967457838a77e2bd6fc6b"
+reference = "https://github.com/NVIDIA/skills/pull/865"
+source_access = "auto"
+built_at = "2026-11-14T05:59:16.486057+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:a8b25acdb2251446eb2a9b4c3c96cb35f2d47ec5fd88b881b72ffa9f3fc8cfd7"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-13T22:15:14Z"
+diff_format = "unified"
+context_files = [
+    "benchmarks.json",
+    "versions.json",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 32
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

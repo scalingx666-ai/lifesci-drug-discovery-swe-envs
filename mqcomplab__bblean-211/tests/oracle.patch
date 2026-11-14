@@ -1,0 +1,229 @@
+diff --git a/LICENSE b/LICENSE
+index fe693ad3..ce672400 100644
+--- a/LICENSE
++++ b/LICENSE
+@@ -1,12 +1,12 @@
+ BitBIRCH-Lean Python Package: An open-source clustering module based on iSIM.
+ 
+ If you find this software useful please cite the following articles:
++- BitBIRCH-Lean:
++    https://pmc.ncbi.nlm.nih.gov/articles/PMC13673950/
+ - BitBIRCH: efficient clustering of large molecular libraries:
+     https://doi.org/10.1039/D5DD00030K
+ - BitBIRCH Clustering Refinement Strategies:
+     https://doi.org/10.1021/acs.jcim.5c00627
+-- BitBIRCH-Lean:
+-    https://pmc.ncbi.nlm.nih.gov/articles/PMC13673950/
+ 
+ Copyright (C) 2025  The Miranda-Quintana Lab and other BitBirch developers, comprised
+ exclusively by:
+diff --git a/README.md b/README.md
+index 5f8b61ea..b8e4fdc3 100644
+--- a/README.md
++++ b/README.md
+@@ -19,12 +19,12 @@ algorithm designed for very large molecular libraries.
+ 
+ If you find this software useful please cite the following articles:
+ 
++- *BitBIRCH-Lean*:
++    https://pmc.ncbi.nlm.nih.gov/articles/PMC13673950/
+ - *BitBIRCH: efficient clustering of large molecular libraries*:
+     https://doi.org/10.1039/D5DD00030K
+ - *BitBIRCH Clustering Refinement Strategies*:
+     https://doi.org/10.1021/acs.jcim.5c00627
+-- *BitBIRCH-Lean*:
+-    https://pmc.ncbi.nlm.nih.gov/articles/PMC13673950/
+ 
+ **NOTE**: BitBirch-Lean is currently beta software, expect minor breaking changes until
+ we hit version 1.0
+@@ -84,7 +84,7 @@ and tag it with `C++`.
+ ## CLI Quickstart
+ 
+ <div align="center">
+-<img src="bblean-demo-v2.gif" width="600" />
++<img src="https://raw.githubusercontent.com/mqcomplab/bblean/main/bblean-demo-v2.gif" width="600" />
+ </div>
+ 
+ BitBIRCH-Lean provides a convenient CLI interface, `bb`. The CLI can be used to convert
+diff --git a/bblean-demo-v2.gif b/bblean-demo-v2.gif
+index 6de18f57..b3e73a59 100644
+Binary files a/bblean-demo-v2.gif and b/bblean-demo-v2.gif differ
+diff --git a/bblean-demo.cast b/bblean-demo.cast
+index 2f1c65f0..b7f7c5f4 100644
+--- a/bblean-demo.cast
++++ b/bblean-demo.cast
+@@ -123,9 +123,9 @@
+ [36.610258, "o", "\r\n\u001b[?2004l\r"]
+ [36.821848, "o", "\r\n\u001b[1m        ______ _ _  ______ _          _        \u001b[0m\r\n\u001b[1m        | ___ (_) | | ___ (_)        | |     \u001b[0m\u001b[36m  ______                      \u001b[0m\r\n\u001b[1m        | |_/ /_| |_| |_/ /_ _ __ ___| |__   \u001b[0m\u001b[36m  ___  / ___________ _______  \u001b[0m\r\n\u001b[1m        | ___ \\ | __| ___ \\ | '__/ __| '_ \\  \u001b[0m\u001b[36m  __  /  _  _ \\  __ `/_  __ \\ \u001b[0m\r\n\u001b[1m        | |_/ / | |_| |_/ / | | | (__| | | | \u001b[0m\u001b[36m  _  /___/  __/ /_/ /_  / / / \u001b[0m\r\n\u001b[1m        \\____/|_|\\__\\____/|_|_|  \\___|_| |_| \u001b[0m\u001b[36m  /_____/\\___/\\__,_/ /_/ /_/  \u001b[0m\r\n"]
+ [36.822128, "o", "\r\n\r\n"]
+-[36.824993, "o", "BitBirch-Lean is developed by the \u001b[1mMiranda-Quintana Lab\u001b[0m \r\n\u001b[4;94mhttps://github.com/mqcomplab\u001b[0m\r\nIf you find this software useful please cite the following articles:\r\n    \u001b[33m•\u001b[0m \u001b[3mBitBIRCH: efficient clustering of large molecular libraries\u001b[0m:\r\n        \u001b[4;94mhttps://doi.org/10.1039/D5DD00030K\u001b[0m\r\n    \u001b[33m•\u001b[0m \u001b[3mBitBIRCH Clustering Refinement Strategies\u001b[0m:\r\n        \u001b[4;94mhttps://doi.org/10.1021/acs.jcim.5c00627\u001b[0m\r\n    \u001b[33m•\u001b[0m \u001b[3mBitBIRCH-Lean\u001b[0m:\r\n        \u001b[4;94mhttps://pmc.ncbi.nlm.nih.gov/articles/PMC13673950/\u001b[0m\r\n"]
++[36.824993, "o", "BitBirch-Lean is developed by the \u001b[1mMiranda-Quintana Lab\u001b[0m \r\n\u001b[4;94mhttps://github.com/mqcomplab\u001b[0m\r\nIf you find this software useful please cite the following articles:\r\n    \u001b[33m•\u001b[0m \u001b[3mBitBIRCH-Lean\u001b[0m:\r\n        \u001b[4;94mhttps://pmc.ncbi.nlm.nih.gov/articles/PMC13673950/\u001b[0m\r\n    \u001b[33m•\u001b[0m \u001b[3mBitBIRCH: efficient clustering of large molecular libraries\u001b[0m:\r\n        \u001b[4;94mhttps://doi.org/10.1039/D5DD00030K\u001b[0m\r\n    \u001b[33m•\u001b[0m \u001b[3mBitBIRCH Clustering Refinement Strategies\u001b[0m:\r\n        \u001b[4;94mhttps://doi.org/10.1021/acs.jcim.5c00627\u001b[0m\r\n"]
+ [36.825087, "o", "\r\n"]
+-[36.825971, "o", "Running \u001b[1msingle-round, serial \u001b[0m\u001b[1m(\u001b[0m\u001b[1;36m1\u001b[0m\u001b[1m process\u001b[0m\u001b[1m)\u001b[0m clustering\r\n\r\n- Branching factor: \u001b[1;36m254\u001b[0m\r\n- Merge criterion: \u001b[33mdiameter\u001b[0m\r\n- Threshold: \u001b[1;36m0.65\u001b[0m\r\n- Num. files loaded: \u001b[1;36m1\u001b[0m\r\n- Num. fingerprints loaded for each file: \u001b[1;36m64\u001b[0m,\u001b[1;36m086\u001b[0m\r\n- Output directory: \u001b[35m/showcase-bb/\u001b[0m\u001b[95moutput\u001b[0m\r\n"]
++[36.825971, "o", "Running \u001b[1msingle-round, serial \u001b[0m\u001b[1m(\u001b[0m\u001b[1;36m1\u001b[0m\u001b[1m process\u001b[0m\u001b[1m)\u001b[0m clustering\r\n\r\n- Branching factor: \u001b[1;36m254\u001b[0m\r\n- Merge criterion: \u001b[33mdiameter\u001b[0m\r\n- Threshold: \u001b[1;36m0.3\u001b[0m\r\n- Num. files loaded: \u001b[1;36m1\u001b[0m\r\n- Num. fingerprints loaded for each file: \u001b[1;36m64\u001b[0m,\u001b[1;36m086\u001b[0m\r\n- Output directory: \u001b[35m/showcase-bb/\u001b[0m\u001b[95moutput\u001b[0m\r\n"]
+ [36.826157, "o", "\r\n"]
+ [36.828146, "o", "\u001b[?25l"]
+ [36.909483, "o", "\u001b[32m⠋\u001b[0m \u001b[3mBitBirching...\u001b[0m"]
+diff --git a/bblean/_console.py b/bblean/_console.py
+index 11ad5438..86c9e473 100644
+--- a/bblean/_console.py
++++ b/bblean/_console.py
+@@ -28,12 +28,12 @@ def print_banner(self) -> None:
+         self.print(
+             r"""BitBirch-Lean is developed by the [bold]Miranda-Quintana Lab[/bold] https://github.com/mqcomplab
+ If you find this software useful please cite the following articles:
++    [yellow]•[/yellow] [italic]BitBIRCH-Lean[/italic]:
++        https://pmc.ncbi.nlm.nih.gov/articles/PMC13673950/
+     [yellow]•[/yellow] [italic]BitBIRCH: efficient clustering of large molecular libraries[/italic]:
+         https://doi.org/10.1039/D5DD00030K
+     [yellow]•[/yellow] [italic]BitBIRCH Clustering Refinement Strategies[/italic]:
+-        https://doi.org/10.1021/acs.jcim.5c00627
+-    [yellow]•[/yellow] [italic]BitBIRCH-Lean[/italic]:
+-        https://pmc.ncbi.nlm.nih.gov/articles/PMC13673950/"""  # noqa
++        https://doi.org/10.1021/acs.jcim.5c00627"""  # noqa
+         )
+ 
+     def print_peak_mem(self, out_dir: Path, indent: bool = True) -> None:
+diff --git a/bblean/bitbirch.py b/bblean/bitbirch.py
+index 6088e1f4..95cd64e4 100644
+--- a/bblean/bitbirch.py
++++ b/bblean/bitbirch.py
+@@ -1,11 +1,11 @@
+ # BitBIRCH-Lean Python Package: An open-source clustering module based on iSIM.
+ #
+ # If you find this software useful please cite the following articles:
++# - BitBIRCH-Lean: TO-BE-ADDED
+ # - BitBIRCH: efficient clustering of large molecular libraries:
+ #   https://doi.org/10.1039/D5DD00030K
+ # - BitBIRCH Clustering Refinement Strategies:
+ #   https://doi.org/10.1021/acs.jcim.5c00627
+-# - BitBIRCH-Lean: TO-BE-ADDED
+ #
+ # Copyright (C) 2025  The Miranda-Quintana Lab and other BitBirch developers, comprised
+ # exclusively by:
+@@ -621,11 +621,11 @@ class BitBirch:
+ 
+     If you find this software useful please cite the following articles:
+ 
++    - BitBIRCH-Lean: TO-BE-ADDED
+     - BitBIRCH: efficient clustering of large molecular libraries:
+       https://doi.org/10.1039/D5DD00030K
+     - BitBIRCH Clustering Refinement Strategies:
+       https://doi.org/10.1021/acs.jcim.5c00627
+-    - BitBIRCH-Lean: TO-BE-ADDED
+ 
+     Parameters
+     ----------
+diff --git a/bblean/multiround.py b/bblean/multiround.py
+index fb8a8433..477e245f 100644
+--- a/bblean/multiround.py
++++ b/bblean/multiround.py
+@@ -1,12 +1,12 @@
+ # BitBIRCH-Lean Python Package: An open-source clustering module based on iSIM.
+ #
+ # If you find this software useful please cite the following articles:
++# - BitBIRCh-Lean:
++#   https://pmc.ncbi.nlm.nih.gov/articles/PMC13673950/
+ # - BitBIRCH: efficient clustering of large molecular libraries:
+ #   https://doi.org/10.1039/D5DD00030K
+ # - BitBIRCH Clustering Refinement Strategies:
+ #   https://doi.org/10.1021/acs.jcim.5c00627
+-# - BitBIRCh-Lean:
+-#   https://pmc.ncbi.nlm.nih.gov/articles/PMC13673950/
+ #
+ # Copyright (C) 2025  The Miranda-Quintana Lab and other BitBirch developers, comprised
+ # exclusively by:
+diff --git a/docs/src/publications.rst b/docs/src/publications.rst
+index 431787f3..53044d11 100644
+--- a/docs/src/publications.rst
++++ b/docs/src/publications.rst
+@@ -7,12 +7,12 @@ Publications
+ 
+ If you find this software useful please cite the following articles:
+ 
++- *BitBIRCH-Lean*:
++    https://pmc.ncbi.nlm.nih.gov/articles/PMC13673950/
+ - *BitBIRCH: efficient clustering of large molecular libraries*:
+     https://doi.org/10.1039/D5DD00030K
+ - *BitBIRCH Clustering Refinement Strategies*:
+     https://doi.org/10.1021/acs.jcim.5c00627
+-- *BitBIRCH-Lean*:
+-    https://pmc.ncbi.nlm.nih.gov/articles/PMC13673950/
+ 
+ BitBIRCH-Lean relies on the ``iSIM`` "instant average similarity" framework. The
+ relevant iSIM publications are:
+diff --git a/examples/best_practices/bitbirch_best_practices.ipynb b/examples/best_practices/bitbirch_best_practices.ipynb
+index 191f5006..1b0df945 100644
+--- a/examples/best_practices/bitbirch_best_practices.ipynb
++++ b/examples/best_practices/bitbirch_best_practices.ipynb
+@@ -9,9 +9,9 @@
+     "\n",
+     "This is a notebook works as an example how to use data-informed parameters for the BitBirch algorithm to obtain better results.\n",
+     "\n",
++    "- [BitBIRCH-Lean](https://pmc.ncbi.nlm.nih.gov/articles/PMC13673950/)\n",
+     "- [BitBIRCH: efficient clustering of large molecular libraries](https://doi.org/10.1039/D5DD00030K)\n",
+     "- [BitBIRCH Clustering Refinement Strategies](https://doi.org/10.1021/acs.jcim.5c00627)\n",
+-    "- [BitBIRCH-Lean](https://pmc.ncbi.nlm.nih.gov/articles/PMC13673950/)\n",
+     "- [BitBIRCH best practices guidelines](https://ADD_WHEN_PUBLISHED)\n",
+     "\n",
+     "Please reach out to one of the following with any questions or concerns. \n",
+diff --git a/examples/best_practices/bitbirch_best_practices_RDKit.ipynb b/examples/best_practices/bitbirch_best_practices_RDKit.ipynb
+index 80719428..18e1d48e 100644
+--- a/examples/best_practices/bitbirch_best_practices_RDKit.ipynb
++++ b/examples/best_practices/bitbirch_best_practices_RDKit.ipynb
+@@ -10,9 +10,9 @@
+     "This is a notebook works as an example how to use data-informed parameters for the BitBirch algorithm to obtain better results.\n",
+     "The RDKit fingerprints require an extra step to refine the largest cluster.\n",
+     "\n",
++    "- [BitBIRCH-Lean](https://pmc.ncbi.nlm.nih.gov/articles/PMC13673950/)\n",
+     "- [BitBIRCH: efficient clustering of large molecular libraries](https://doi.org/10.1039/D5DD00030K)\n",
+     "- [BitBIRCH Clustering Refinement Strategies](https://doi.org/10.1021/acs.jcim.5c00627)\n",
+-    "- [BitBIRCH-Lean](https://pmc.ncbi.nlm.nih.gov/articles/PMC13673950/)\n",
+     "- [BitBIRCH best practices guidelines](https://ADD_WHEN_PUBLISHED)\n",
+     "\n",
+     "Please reach out to one of the following with any questions or concerns. \n",
+diff --git a/examples/best_practices/bitbirch_parameter.ipynb b/examples/best_practices/bitbirch_parameter.ipynb
+index 3676d82e..f1aa25ae 100644
+--- a/examples/best_practices/bitbirch_parameter.ipynb
++++ b/examples/best_practices/bitbirch_parameter.ipynb
+@@ -9,9 +9,9 @@
+     "\n",
+     "This is a notebook has the goal to find the best parameters for the BitBirch clustering algorithm and goes together with the results obtained the in BitBirch best practices guidelines.\n",
+     "\n",
++    "- [BitBIRCH-Lean](https://pmc.ncbi.nlm.nih.gov/articles/PMC13673950/)\n",
+     "- [BitBIRCH: efficient clustering of large molecular libraries](https://doi.org/10.1039/D5DD00030K)\n",
+     "- [BitBIRCH Clustering Refinement Strategies](https://doi.org/10.1021/acs.jcim.5c00627)\n",
+-    "- [BitBIRCH-Lean](https://pmc.ncbi.nlm.nih.gov/articles/PMC13673950/)\n",
+     "- [BitBIRCH best practices guidelines](https://ADD_WHEN_PUBLISHED)\n",
+     "\n",
+     "Please reach out to one of the following with any questions or concerns. \n",
+diff --git a/examples/bitbirch_best_practices.ipynb b/examples/bitbirch_best_practices.ipynb
+index 5abd1417..0581a7bd 100644
+--- a/examples/bitbirch_best_practices.ipynb
++++ b/examples/bitbirch_best_practices.ipynb
+@@ -10,9 +10,9 @@
+     "This is a tutorial notebook that showcases a simple workflow of BitBIRCH clustering,\n",
+     "incluiding threshold selection, and the refinement of singletons.\n",
+     "\n",
++    "- [BitBIRCH-Lean](https://pmc.ncbi.nlm.nih.gov/articles/PMC13673950/)\n",
+     "- [BitBIRCH: efficient clustering of large molecular libraries](https://doi.org/10.1039/D5DD00030K)\n",
+     "- [BitBIRCH Clustering Refinement Strategies](https://doi.org/10.1021/acs.jcim.5c00627)\n",
+-    "- [BitBIRCH-Lean](https://pmc.ncbi.nlm.nih.gov/articles/PMC13673950/)\n",
+     "\n",
+     "Please reach out to one of the following with any questions or concerns. \n",
+     "\n",
+diff --git a/examples/bitbirch_quickstart.ipynb b/examples/bitbirch_quickstart.ipynb
+index 94fa1af0..07f1f9ed 100644
+--- a/examples/bitbirch_quickstart.ipynb
++++ b/examples/bitbirch_quickstart.ipynb
+@@ -11,9 +11,9 @@
+     "including a refinement step. If you find this software useful please cite the following\n",
+     "articles:\n",
+     "\n",
++    "- [BitBIRCH-Lean](https://pmc.ncbi.nlm.nih.gov/articles/PMC13673950/)\n",
+     "- [BitBIRCH: efficient clustering of large molecular libraries](https://doi.org/10.1039/D5DD00030K)\n",
+     "- [BitBIRCH Clustering Refinement Strategies](https://doi.org/10.1021/acs.jcim.5c00627)\n",
+-    "- [BitBIRCH-Lean](https://pmc.ncbi.nlm.nih.gov/articles/PMC13673950/)\n",
+     "\n",
+     "Please reach out to one of the following with any questions or concerns. \n",
+     "\n",

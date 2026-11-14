@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/MDAnalysis__mdanalysis-5549"
+description = "Update OS versions in CI workflows"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "mdanalysis",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "MDAnalysis/mdanalysis"
+ref = "bd5aa9101f1ff7f7d9df535c963ec320c9614432"
+reference = "https://github.com/MDAnalysis/mdanalysis/pull/5549"
+source_access = "auto"
+built_at = "2026-11-14T05:52:27.019412+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:192b6970a175f16df20fa0383bf8d0b870316918f465b8a5a83468cf0fa66dff"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-13T07:31:36Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/gh-ci-cron.yaml",
+    ".github/workflows/gh-ci.yaml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 14
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

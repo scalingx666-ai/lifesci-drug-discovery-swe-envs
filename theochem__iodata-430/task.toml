@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/theochem__iodata-430"
+description = "Fix the energy, num2sym and nuclear names of the WFX dump"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "iodata",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "theochem/iodata"
+ref = "785cf84e7814a2fd330950bc23560dac326bdfcf"
+reference = "https://github.com/theochem/iodata/pull/430"
+source_access = "auto"
+built_at = "2026-11-14T05:58:01.170465+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:145e134a82841d01f09dd904112b21c2f84491cbdeef93d8f4ada46e1ee4f1b0"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-09T20:34:26Z"
+diff_format = "unified"
+context_files = [
+    "iodata/formats/wfx.py",
+    "iodata/test/test_wfx.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 69
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

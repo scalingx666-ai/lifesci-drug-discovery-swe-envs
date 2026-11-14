@@ -1,0 +1,314 @@
+diff --git a/so3lr/mlff/calculators/potential.py b/so3lr/mlff/calculators/potential.py
+index 3f86906e..525ea872 100644
+--- a/so3lr/mlff/calculators/potential.py
++++ b/so3lr/mlff/calculators/potential.py
+@@ -11,13 +11,12 @@
+ from glp.graph import Graph
+ 
+ from ...pbc import lattice_rows
+-from ..utils.checkpoint_utils import load_params_pkl
++from ..utils.checkpoint_utils import load_params_from_checkpoint, load_params_pkl
+ from ..utils.training_utils import expand_observables_to_theory_levels
+ from ..nn.stacknet.observable_function_sparse import get_observable_fn_sparse
+ from ..nn.observable.dispersion_ref_data import supported_atomic_numbers_for_config
+ from ml_collections import config_dict
+ from ..config import from_config
+-from orbax import checkpoint
+ 
+ 
+ def cast_float_params(params, dtype):
+@@ -140,22 +139,7 @@ def load_model_from_workdir(
+     if from_file is True:
+         params = load_params_pkl(pathlib.Path(workdir) / 'params.pkl')
+     else:
+-        loaded_mngr = checkpoint.CheckpointManager(
+-            pathlib.Path(workdir) / "checkpoints",
+-            item_names=('params',),
+-            item_handlers={'params': checkpoint.StandardCheckpointHandler()},
+-            options=checkpoint.CheckpointManagerOptions(step_prefix="ckpt"),
+-        )
+-
+-        mngr_state = loaded_mngr.restore(
+-            loaded_mngr.latest_step(),
+-            args=checkpoint.args.Composite(
+-                params=checkpoint.args.StandardRestore()
+-            ),
+-        )
+-
+-        params = mngr_state.get('params')
+-        loaded_mngr.close()
++        params = load_params_from_checkpoint(pathlib.Path(workdir) / 'checkpoints')
+ 
+     if model == 'so3krates':
+         net = from_config.make_so3krates_sparse_from_config(
+diff --git a/so3lr/mlff/utils/checkpoint_utils.py b/so3lr/mlff/utils/checkpoint_utils.py
+index 0e3f561e..78cc19d4 100644
+--- a/so3lr/mlff/utils/checkpoint_utils.py
++++ b/so3lr/mlff/utils/checkpoint_utils.py
+@@ -8,13 +8,25 @@
+ from .logging_utils import suppress_absl_warnings
+ 
+ 
++def _validation_loss(metrics):
++    return metrics['loss']
++
++
++# Training ranks its checkpoints by the saved validation loss, lowest first.
++_RANK_BY_LOSS = dict(step_prefix='ckpt', best_fn=_validation_loss, best_mode='min')
++
++
+ def load_params_from_checkpoint(
+-        ckpt_dir: str
++        ckpt_dir: str,
++        step: Optional[int] = None,
+ ):
+     """Load parameters from checkpoint.
+ 
+     Args:
+         ckpt_dir (str): Checkpoint directory.
++        step (int, optional): Step to load. Defaults to the checkpoint with the
++            lowest saved validation loss, or to the latest one when no
++            checkpoint saved a loss.
+ 
+     Returns:
+         PyTree of parameters.
+@@ -33,11 +45,17 @@ def load_params_from_checkpoint(
+             f'Trying to load parameters from {ckpt_dir_cleaned} but path does not exist.'
+         )
+ 
+-    loaded_mngr = make_checkpoint_manager(ckpt_dir=ckpt_dir_cleaned)
++    loaded_mngr = make_checkpoint_manager(
++        ckpt_dir=ckpt_dir_cleaned,
++        ckpt_mngr_options=ocp.CheckpointManagerOptions(**_RANK_BY_LOSS),
++    )
++    if step is None:
++        # None when no checkpoint saved a loss; restore(None) then takes the latest.
++        step = loaded_mngr.best_step()
+ 
+     with suppress_absl_warnings():
+         mngr_state = loaded_mngr.restore(
+-            loaded_mngr.latest_step(),
++            step,
+             # A training checkpoint may contain additional atomic items (for
+             # example the optimizer/iterator state).  Asking explicitly for
+             # ``params`` keeps inference compatible with both those composite
+@@ -113,6 +131,29 @@ def make_checkpoint_manager(
+     )
+ 
+ 
++def make_training_checkpoint_options(ckpt_manager_options: Optional[dict] = None):
++    """CheckpointManagerOptions for training: keep the ``max_to_keep`` (default 3)
++    checkpoints with the lowest validation loss and always the newest one.
++
++    orbax's own policy for a ``best_fn`` keeps only the best N, so it deletes the
++    newest checkpoint as soon as its loss is not among them, and a restart (which
++    resumes from ``latest_step()``) silently goes back to an older step.
++    """
++    options = {'max_to_keep': 3} if ckpt_manager_options is None else dict(ckpt_manager_options)
++    # orbax refuses max_to_keep next to a preservation_policy.
++    max_to_keep = options.pop('max_to_keep', None)
++    policies = ocp.checkpoint_managers
++    return ocp.CheckpointManagerOptions(
++        **_RANK_BY_LOSS,
++        preservation_policy=policies.AnyPreservationPolicy([
++            # reverse=True sorts the lowest loss last, as orbax does for best_mode='min'.
++            policies.BestN(get_metric_fn=_validation_loss, reverse=True, n=max_to_keep),
++            policies.LatestN(n=1),
++        ]),
++        **options
++    )
++
++
+ def make_training_checkpoint_manager(
+         ckpt_dir,
+         ckpt_mngr_options: Optional[ocp.CheckpointManagerOptions] = None
+diff --git a/so3lr/mlff/utils/training_utils.py b/so3lr/mlff/utils/training_utils.py
+index 26542243..b6344361 100644
+--- a/so3lr/mlff/utils/training_utils.py
++++ b/so3lr/mlff/utils/training_utils.py
+@@ -1288,7 +1288,8 @@ def fit(
+             If None, loss_fn will be used. Defaults to None.
+         num_epochs (int): Number of training epochs.
+         ckpt_dir (str): Checkpoint path.
+-        ckpt_manager_options (dict): Checkpoint manager options.
++        ckpt_manager_options (dict): Checkpoint manager options. Training keeps the
++            ``max_to_keep`` (default 3) lowest-loss checkpoints and always the newest one.
+         eval_every_num_steps (int): Evaluate the metrics every num-th step
+         allow_restart: Restarts from existing checkpoints are allowed.
+         training_seed (int): Random seed for shuffling of training data.
+@@ -1314,19 +1315,9 @@ def fit(
+     ckpt_dir.mkdir(exist_ok=True)
+ 
+     # Create orbax CheckpointManager.
+-    if ckpt_manager_options is None:
+-        ckpt_manager_options = {'max_to_keep': 3}
+-
+-    options = ocp.CheckpointManagerOptions(
+-        best_fn=lambda u: u['loss'],
+-        best_mode='min',
+-        step_prefix='ckpt',
+-        **ckpt_manager_options
+-    )
+-
+     ckpt_mngr = checkpoint_utils.make_checkpoint_manager(
+         ckpt_dir=ckpt_dir,
+-        ckpt_mngr_options=options
++        ckpt_mngr_options=checkpoint_utils.make_training_checkpoint_options(ckpt_manager_options)
+     )
+ 
+     training_step_fn = make_training_step_fn(
+@@ -1361,7 +1352,7 @@ def fit(
+                 f'{ckpt_dir} already exists at step {latest_step}. If you want '
+                 'to re-start training, set `allow_restart=True`.'
+             )
+-        params = checkpoint_utils.load_params_from_checkpoint(ckpt_dir=ckpt_dir)
++        params = checkpoint_utils.load_params_from_checkpoint(ckpt_dir=ckpt_dir, step=latest_step)
+         params = expand_observables_to_theory_levels(params)
+         step = latest_step
+         logger.info('Loaded parameters from %s at step %s.', ckpt_dir, latest_step)
+@@ -1640,7 +1631,7 @@ def fit_from_iterator(
+         val_fn (Callable, optional): Validation function to use for metrics during validation.
+             If None, loss_fn will be used. Defaults to None.
+         ckpt_dir (str): Checkpoint path.
+-        ckpt_manager_options (dict): Checkpoint manager options.
++        ckpt_manager_options (dict): Checkpoint manager options; see fit().
+         eval_every_num_steps (int): Evaluate the metrics every num-th step
+         allow_restart: Restarts from existing checkpoints are allowed.
+         training_seed (int): Random seed for shuffling of training data.
+@@ -1698,19 +1689,9 @@ def _single_device(tree):
+     ckpt_dir.mkdir(exist_ok=True)
+ 
+     # Create orbax CheckpointManager.
+-    if ckpt_manager_options is None:
+-        ckpt_manager_options = {'max_to_keep': 3}
+-
+-    options = ocp.CheckpointManagerOptions(
+-        best_fn=lambda u: u['loss'],
+-        best_mode='min',
+-        step_prefix='ckpt',
+-        **ckpt_manager_options
+-    )
+-
+     ckpt_mngr = checkpoint_utils.make_training_checkpoint_manager(
+         ckpt_dir=ckpt_dir,
+-        ckpt_mngr_options=options
++        ckpt_mngr_options=checkpoint_utils.make_training_checkpoint_options(ckpt_manager_options)
+     )
+ 
+     training_step_fn = _make_training_step(loss_fn)
+@@ -1783,7 +1764,7 @@ def _ema_update_fn(ema_p, p):
+                 'and epoch counter.', latest_step,
+             )
+             params = expand_observables_to_theory_levels(
+-                checkpoint_utils.load_params_from_checkpoint(ckpt_dir=ckpt_dir)
++                checkpoint_utils.load_params_from_checkpoint(ckpt_dir=ckpt_dir, step=latest_step)
+             )
+             step = int(latest_step)
+     if training_state is not None:
+diff --git a/tests/mlff_tests/test_checkpoint_retention.py b/tests/mlff_tests/test_checkpoint_retention.py
+new file mode 100644
+index 00000000..a1f4f503
+--- /dev/null
++++ b/tests/mlff_tests/test_checkpoint_retention.py
+@@ -0,0 +1,72 @@
++"""Training keeps the max_to_keep lowest-loss checkpoints and always the newest one;
++inference loads the lowest-loss one. fit_from_iterator's restart from the newest is
++the max_to_keep=1 case of test_fit_from_iterator_restart_matches_uninterrupted_updates."""
++
++import jax.numpy as jnp
++import optax
++import pytest
++
++from so3lr.mlff.utils import checkpoint_utils, training_utils
++
++
++class _Model:
++    @staticmethod
++    def init(rng, batch):
++        return {'w': jnp.array(0.0)}
++
++
++@pytest.fixture
++def rising_loss(monkeypatch):
++    """Toy training in which every step raises the validation loss: SGD (lr 0.1) on
++    gradient 1 moves w by -0.1 per step, and the validation loss is w**2."""
++    def training_step_factory(optimizer, loss_fn, log_gradients):
++        def step(params, opt_state, batch):
++            updates, opt_state = optimizer.update({'w': batch['gradient']}, opt_state, params)
++            params = optax.apply_updates(params, updates)
++            return params, opt_state, {'loss': jnp.square(params['w'])}
++        return step
++
++    monkeypatch.setattr(training_utils, 'make_training_step_fn', training_step_factory)
++    monkeypatch.setattr(training_utils, 'make_validation_step_fn',
++                        lambda val_fn: lambda params, batch: {'loss': jnp.square(params['w'])})
++    monkeypatch.setattr(training_utils.jraph, 'get_number_of_padding_with_graphs_nodes',
++                        lambda graph: 0)
++    # fit() batches a list of graphs; here every list item is one batch.
++    monkeypatch.setattr(training_utils, 'dynamically_batch_with_lr',
++                        lambda graphs, **kwargs: ((graph, None) for graph in graphs))
++
++
++def _fit(ckpt_dir, allow_restart=False):
++    """One epoch of 4 steps, evaluated after every step."""
++    training_utils.fit(
++        model=_Model(), optimizer=optax.sgd(0.1), loss_fn=None,
++        graph_to_batch_fn=lambda graph, lr: {'num_of_non_padded_graphs': 1,
++                                             'gradient': jnp.asarray(graph)},
++        training_data=[1.0] * 4, validation_data=[0.0], num_epochs=1,
++        batch_max_num_nodes=10, batch_max_num_edges=20, batch_max_num_graphs=3,
++        batch_max_num_pairs=0, ckpt_dir=ckpt_dir, ckpt_manager_options={'max_to_keep': 2},
++        eval_every_num_steps=1, allow_restart=allow_restart, use_wandb=False)
++
++
++def _steps(ckpt_dir):
++    manager = checkpoint_utils.make_checkpoint_manager(ckpt_dir)
++    steps = sorted(manager.all_steps())
++    manager.close()
++    return steps
++
++
++def _w(ckpt_dir, step=None):
++    return float(checkpoint_utils.load_params_from_checkpoint(ckpt_dir, step=step)['w'])
++
++
++def test_fit_keeps_and_resumes_from_the_newest_checkpoint(tmp_path, rising_loss):
++    _fit(tmp_path)
++    # Losses 0.01, 0.04, 0.09, 0.16: steps 1 and 2 are the best two, step 4 the newest.
++    assert _steps(tmp_path) == [1, 2, 4]
++    # Inference loads the lowest-loss checkpoint.
++    assert _w(tmp_path) == pytest.approx(-0.1)
++
++    # fit() restarts from the newest weights and step, not from the best ones.
++    _fit(tmp_path, allow_restart=True)
++    assert _steps(tmp_path) == [1, 2, 8]
++    assert _w(tmp_path, step=8) == pytest.approx(-0.8)
+diff --git a/tests/mlff_tests/test_tfds_pipeline_logic.py b/tests/mlff_tests/test_tfds_pipeline_logic.py
+index 71250c26..5acdac63 100644
+--- a/tests/mlff_tests/test_tfds_pipeline_logic.py
++++ b/tests/mlff_tests/test_tfds_pipeline_logic.py
+@@ -202,6 +202,13 @@ def test_params_only_checkpoint_has_no_training_state(tmp_path):
+     loaded = checkpoint_utils.load_params_from_checkpoint(tmp_path)
+     assert float(loaded['w']) == pytest.approx(1.0)
+ 
++    # With no saved loss to rank by, inference loads the latest checkpoint.
++    manager = checkpoint_utils.make_checkpoint_manager(tmp_path)
++    manager.save(5, args=ocp.args.Composite(params=ocp.args.StandardSave({'w': jnp.array(2.0)})))
++    manager.wait_until_finished()
++    manager.close()
++    assert float(checkpoint_utils.load_params_from_checkpoint(tmp_path)['w']) == pytest.approx(2.0)
++
+     training_manager = checkpoint_utils.make_training_checkpoint_manager(tmp_path)
+     assert _restore_tfds_training_state(
+         training_manager, step=4, optimizer=optax.sgd(1e-2)
+@@ -301,7 +308,9 @@ def run(checkpoint_dir, epochs, training, validation, allow_restart=False):
+             batch_max_num_pairs=0,
+             num_epochs=epochs,
+             ckpt_dir=checkpoint_dir,
+-            ckpt_manager_options={'max_to_keep': 10},
++            # The validation loss rises every step, so the newest checkpoint is
++            # never the best one: the restart must still resume from it.
++            ckpt_manager_options={'max_to_keep': 1},
+             eval_every_num_steps=eval_every,
+             allow_restart=allow_restart,
+             use_wandb=False,

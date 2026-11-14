@@ -1,0 +1,72 @@
+version = "1.0"
+
+[task]
+name = "default/mir-group__allegro-124"
+description = "v0.5.0"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "allegro",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "mir-group/allegro"
+ref = "ec9b772a0a109ae6a7ea98106e9e07af70aa5de0"
+reference = "https://github.com/mir-group/allegro/pull/124"
+source_access = "auto"
+built_at = "2026-11-14T05:54:08.909710+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:6d405f4ec246c75a6845d50e0768ab5685600d3274bc507dcb54b33264359e66"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-05-06T02:39:59Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/tests.yaml",
+    "CHANGELOG.md",
+    "allegro/_version.py",
+    "allegro/model/allegro_models.py",
+    "allegro/nn/scalarembed.py",
+    "configs/tutorial.yaml",
+    "docs/allegro_arch.png",
+    "docs/guide/allegro_model.rst",
+    "docs/guide/api.rst",
+    "docs/guide/guide.rst",
+    "tests/model/test_allegro.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 284
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

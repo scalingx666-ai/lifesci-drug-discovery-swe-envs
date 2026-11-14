@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/choderalab__yank-1244"
+description = "Add GHA CI"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "yank",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "choderalab/yank"
+ref = "59fc6313b3b7d82966afc539604c36f4db9b952c"
+reference = "https://github.com/choderalab/yank/pull/1244"
+source_access = "auto"
+built_at = "2026-11-14T05:57:20.733574+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:bcbf6650cfaae3675abcd9d0723d450a28e75431a1bf75f83369dac48e677dc4"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2020-11-15T22:12:09Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/CI.yaml",
+    "README.md",
+    "Yank/__init__.py",
+    "devtools/conda-envs/test_env.yaml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 179
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

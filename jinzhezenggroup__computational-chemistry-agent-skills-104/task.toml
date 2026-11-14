@@ -1,0 +1,74 @@
+version = "1.0"
+
+[task]
+name = "default/jinzhezenggroup__computational-chemistry-agent-skills-104"
+description = "chore(sync): update synced directories"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "computational-chemistry-agent-skills",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "jinzhezenggroup/computational-chemistry-agent-skills"
+ref = "5c19e75b256d49849574c999b1965d94024ee072"
+reference = "https://github.com/jinzhezenggroup/computational-chemistry-agent-skills/pull/104"
+source_access = "auto"
+built_at = "2026-11-14T06:04:54.725743+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:9c956e66b5129410a1134a5740713536dbc155c2e0ded3f17057d042798a1687"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-25T10:31:20Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "machine-learning-potentials/deepmd-python-inference/SKILL.md",
+    "machine-learning-potentials/deepmd-python-inference/references/dpa4-freeze-policy.md",
+    "machine-learning-potentials/deepmd-python-inference/references/held-out-evaluation.md",
+    "machine-learning-potentials/deepmd-python-inference/references/model-artifacts.md",
+    "machine-learning-potentials/deepmd-train/SKILL.md",
+    "machine-learning-potentials/deepmd-train/models/dpa4.md",
+    "machine-learning-potentials/deepmd-train/models/dpa4c.md",
+    "molecular-dynamics/lammps-deepmd/SKILL.md",
+    "molecular-dynamics/lammps-deepmd/assets/input.nvt.lammps",
+    "molecular-dynamics/lammps-deepmd/references/commands-and-workflow.md",
+    "molecular-dynamics/lammps-deepmd/references/model-deployment.md",
+    "sync-state.toml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 958
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

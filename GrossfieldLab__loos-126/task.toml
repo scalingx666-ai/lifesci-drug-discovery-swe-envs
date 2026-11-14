@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/GrossfieldLab__loos-126"
+description = "Lbf fixup"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "loos",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "GrossfieldLab/loos"
+ref = "79e4ed168412474699bf12c94955d3709e15db2a"
+reference = "https://github.com/GrossfieldLab/loos/pull/126"
+source_access = "auto"
+built_at = "2026-11-14T05:59:07.504408+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:a604f2dc95691f6766759a45755346440d6516dab3179104228ad655f69f93e3"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-04-08T20:42:04Z"
+diff_format = "unified"
+context_files = [
+    "Tools/long-bond-finder.cpp",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 42
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

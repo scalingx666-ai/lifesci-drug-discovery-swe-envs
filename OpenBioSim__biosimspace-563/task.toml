@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/OpenBioSim__biosimspace-563"
+description = "Backport fix from PR #562"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "biosimspace",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "OpenBioSim/biosimspace"
+ref = "195cbfafb18bd4d2405abb00db49733745887b94"
+reference = "https://github.com/OpenBioSim/biosimspace/pull/563"
+source_access = "auto"
+built_at = "2026-11-14T05:57:58.967162+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:45f5967d8d0cba186d9cbdd73a6dbc590c425cbca62b761a947c518ddb85eb16"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-05T12:54:09Z"
+diff_format = "unified"
+context_files = [
+    "src/BioSimSpace/Align/_align.py",
+    "src/BioSimSpace/Sandpit/Exscientia/Align/_align.py",
+    "tests/Align/test_align.py",
+    "tests/Sandpit/Exscientia/Align/test_align.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 574
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

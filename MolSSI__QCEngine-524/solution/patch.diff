@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/CI.yml b/.github/workflows/CI.yml
+index dd600bc23..7ad74f501 100644
+--- a/.github/workflows/CI.yml
++++ b/.github/workflows/CI.yml
+@@ -117,7 +117,7 @@ jobs:
+             pytest: ""
+ 
+           - conda-env: adcc
+-            python-version: "3.10"
++            python-version: "3.13"
+             label: ADCC
+             runs-on: ubuntu-latest
+             pytest: ""

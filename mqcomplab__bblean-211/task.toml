@@ -1,0 +1,74 @@
+version = "1.0"
+
+[task]
+name = "default/mqcomplab__bblean-211"
+description = "Fix gif and update article order"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "bblean",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "mqcomplab/bblean"
+ref = "a8c07f9f0df760010bda83873541c95fabf6925d"
+reference = "https://github.com/mqcomplab/bblean/pull/211"
+source_access = "auto"
+built_at = "2026-11-14T06:05:50.864893+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:d710df2922092a2f69c775d1eccdc36d74cc3f435898794f9329ea2d07d6aa47"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-06T23:22:23Z"
+diff_format = "unified"
+context_files = [
+    "LICENSE",
+    "README.md",
+    "bblean-demo-v2.gif",
+    "bblean-demo.cast",
+    "bblean/_console.py",
+    "bblean/bitbirch.py",
+    "bblean/multiround.py",
+    "docs/src/publications.rst",
+    "examples/best_practices/bitbirch_best_practices.ipynb",
+    "examples/best_practices/bitbirch_best_practices_RDKit.ipynb",
+    "examples/best_practices/bitbirch_parameter.ipynb",
+    "examples/bitbirch_best_practices.ipynb",
+    "examples/bitbirch_quickstart.ipynb",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 42
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,110 @@
+diff --git a/.claude-plugin/marketplace.json b/.claude-plugin/marketplace.json
+index 0183b4550..5449cd106 100644
+--- a/.claude-plugin/marketplace.json
++++ b/.claude-plugin/marketplace.json
+@@ -6,7 +6,7 @@
+   },
+   "metadata": {
+     "description": "ToolUniverse marketplace \u2014 2,700+ scientific research tools and 160+ specialized skills for biology, chemistry, medicine, and data science.",
+-    "version": "1.5.9"
++    "version": "1.5.10"
+   },
+   "plugins": [
+     {
+diff --git a/mcpb/manifest.json b/mcpb/manifest.json
+index 0b7db45bc..6bc5ef7f6 100644
+--- a/mcpb/manifest.json
++++ b/mcpb/manifest.json
+@@ -2,7 +2,7 @@
+     "manifest_version": "0.4",
+     "name": "tooluniverse",
+     "display_name": "ToolUniverse",
+-    "version": "1.5.9",
++    "version": "1.5.10",
+     "description": "ToolUniverse: an ecosystem for democratizing AI scientists with 2,700+ scientific tools.",
+     "long_description": "ToolUniverse is an ecosystem for creating AI scientist systems from any large language model (LLM). It standardizes how LLMs interact with tools, integrating thousands of machine learning models, datasets, APIs, and scientific packages for data analysis, knowledge retrieval, and experimental design. This bundle exposes ToolUniverse capability via the Model Context Protocol (MCP), enabling AI assistants to perform complex scientific tasks.",
+     "author": {
+diff --git a/mcpb/pyproject.toml b/mcpb/pyproject.toml
+index 9e6dafe8c..efd6abb2e 100644
+--- a/mcpb/pyproject.toml
++++ b/mcpb/pyproject.toml
+@@ -1,6 +1,6 @@
+ [project]
+ name = "tooluniverse-mcpb-native"
+-version = "1.5.9"
++version = "1.5.10"
+ description = "ToolUniverse MCP Server (Native MCPB bundle)"
+ # This bound and manifest.json's compatibility.runtimes.python look like the
+ # same fact stated twice. They are not:
+diff --git a/plugin/.claude-plugin/plugin.json b/plugin/.claude-plugin/plugin.json
+index 432a1cca1..25626b2b1 100644
+--- a/plugin/.claude-plugin/plugin.json
++++ b/plugin/.claude-plugin/plugin.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "tooluniverse",
+   "description": "2,700+ scientific research tools for biology, chemistry, medicine, and data science. Access PubMed, UniProt, PubChem, TCGA, NHANES, GWAS Catalog, and hundreds more databases through a unified MCP interface. Includes 160+ specialized research skills for genomics, drug discovery, clinical analysis, protein variant interpretation, and more.",
+-  "version": "1.5.9",
++  "version": "1.5.10",
+   "author": {
+     "name": "Shanghua Gao",
+     "url": "https://shgao.site"
+diff --git a/plugins/tooluniverse/.codex-plugin/plugin.json b/plugins/tooluniverse/.codex-plugin/plugin.json
+index 6e5c6acf2..a1949e7c4 100644
+--- a/plugins/tooluniverse/.codex-plugin/plugin.json
++++ b/plugins/tooluniverse/.codex-plugin/plugin.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "tooluniverse",
+   "description": "2,700+ scientific research tools for biology, chemistry, medicine, and data science. Access PubMed, UniProt, PubChem, TCGA, NHANES, GWAS Catalog, and hundreds more databases through a unified MCP interface. Includes specialized research skills for genomics, drug discovery, clinical analysis, protein variant interpretation, and more.",
+-  "version": "1.5.9",
++  "version": "1.5.10",
+   "author": {
+     "name": "Shanghua Gao",
+     "url": "https://shgao.site"
+diff --git a/pyproject.toml b/pyproject.toml
+index 76e6fe403..44c7e6b50 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
+ 
+ [project]
+ name = "tooluniverse"
+-version = "1.5.9"
++version = "1.5.10"
+ description = "A comprehensive collection of scientific tools for Agentic AI, offering integration with the ToolUniverse SDK and MCP Server to support advanced scientific workflows."
+ authors = [
+     { name = "Shanghua Gao", email = "shanghuagao@gmail.com" }
+diff --git a/server.json b/server.json
+index a97673da9..475d4ee43 100644
+--- a/server.json
++++ b/server.json
+@@ -7,13 +7,13 @@
+     "url": "https://github.com/mims-harvard/ToolUniverse",
+     "source": "github"
+   },
+-  "version": "1.5.9",
++  "version": "1.5.10",
+   "packages": [
+     {
+       "registryType": "pypi",
+       "registryBaseUrl": "https://pypi.org",
+       "identifier": "tooluniverse",
+-      "version": "1.5.9",
++      "version": "1.5.10",
+       "runtimeHint": "uvx",
+       "transport": {
+         "type": "stdio"
+diff --git a/uv.lock b/uv.lock
+index cb972ded0..2996b0360 100644
+--- a/uv.lock
++++ b/uv.lock
+@@ -6256,7 +6256,7 @@ wheels = [
+ 
+ [[package]]
+ name = "tooluniverse"
+-version = "1.5.9"
++version = "1.5.10"
+ source = { editable = "." }
+ dependencies = [
+     { name = "aiohttp" },

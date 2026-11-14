@@ -1,0 +1,176 @@
+diff --git a/Makefile b/Makefile
+index 9810f6d..28f009c 100644
+--- a/Makefile
++++ b/Makefile
+@@ -10,9 +10,9 @@ CC ?= gcc
+ NAME := senpai
+ 
+ WARNINGS := -Wall -Wextra -Wshadow -Wpointer-arith -Wcast-align -Wwrite-strings -Wmissing-prototypes -Wmissing-declarations -Wredundant-decls -Wnested-externs -Winline -Wno-long-long -Wuninitialized -Wstrict-prototypes
+-CFLAGS ?= -O2 -g3
++CFLAGS ?= -O2 -g3 -fopenmp
+ CFLAGS := $(CFLAGS) -std=c99 -U__STRICT_ANSI__ -I./headers $(WARNINGS)
+-LDLIBS := -lm
++LDLIBS := -lm -fopenmp
+ 
+ DEPFILES := $(wildcard sources/*.d)
+ SRCS := $(wildcard sources/*.c)
+diff --git a/sources/universe.c b/sources/universe.c
+index ad8d8d8..37c02d5 100644
+--- a/sources/universe.c
++++ b/sources/universe.c
+@@ -403,76 +403,119 @@ int universe_simulate(universe_t *universe, const args_t *args)
+ universe_t *universe_iterate(universe_t *universe, const args_t *args)
+ {
+   size_t i; /* Iterator */
+-
++  int err = 0;
++  
+   /* We update the position vector first, as part of the Velocity-Verley integration */
++#pragma omp parallel for 
+   for (i=0; i<(universe->atom_nb); ++i)
+-  {
+-    if (atom_update_pos(universe, args, i) == NULL)
++    {
++      if (atom_update_pos(universe, args, i) == NULL)
++        {
++#pragma omp atomic write
++          err = 1;
++        }
++    }
++  if( 0 != err )
+     {
+       return (retstr(NULL, TEXT_UNIVERSE_ITERATE_FAILURE, __FILE__, __LINE__));
+     }
+-  }
+-
++  
+   /* We enforce the periodic boundary conditions */
++#pragma omp parallel for 
+   for (i=0; i<(universe->atom_nb); ++i)
+-  {
+-    if (atom_enforce_pbc(universe, i) == NULL)
++    {
++      if (atom_enforce_pbc(universe, i) == NULL)
++        {
++#pragma omp atomic write
++          err = 1;
++        }
++    }
++  if( 0 != err )
+     {
+       return (retstr(NULL, TEXT_UNIVERSE_ITERATE_FAILURE, __FILE__, __LINE__));
+     }
+-  }
+-
+   /* Update the force vectors */
+-  /* By numerically differentiating the potential energy... 'toute facon, entre ma consommation electrique, mes achats inter*/
++  /* By numerically differentiating the potential energy... */
+   if (args->numerical == MODE_NUMERICAL)
+-  {
+-    for (i=0; i<(universe->atom_nb); ++i)
+     {
+-      if (atom_update_frc_numerical(universe, i) == NULL)
+-      {
+-        return (retstr(NULL, TEXT_UNIVERSE_ITERATE_FAILURE, __FILE__, __LINE__));
+-      }
++#pragma omp parallel for
++      for (i=0; i<(universe->atom_nb); ++i)
++        {
++          if (atom_update_frc_numerical(universe, i) == NULL)
++            {
++#pragma omp atomic write
++              err = 1;
++            }
++        }
++    }
++  if( 0 != err )
++    {
++      return (retstr(NULL, TEXT_UNIVERSE_ITERATE_FAILURE, __FILE__, __LINE__));
+     }
+-  }
+-
+   /* By numerically differentiating the potential energy using points in a tetrahedron... */
+   if (args->numerical == MODE_NUMERICAL_TETRA)
+-  {
+-    for (i=0; i<(universe->atom_nb); ++i)
+-      if (atom_update_frc_numerical_tetrahedron(universe, i) == NULL)
+-        return (retstr(NULL, TEXT_UNIVERSE_ITERATE_FAILURE, __FILE__, __LINE__));
+-  }
+-
++    {
++#pragma omp parallel for
++      for (i=0; i<(universe->atom_nb); ++i)
++        {
++          if (atom_update_frc_numerical_tetrahedron(universe, i) == NULL)
++            {
++#pragma omp atomic write
++              err = 1;
++            }
++        }
++      if( 0 != err )
++          {
++            return (retstr(NULL, TEXT_UNIVERSE_ITERATE_FAILURE, __FILE__, __LINE__));
++          }
++    }
++  
+   /* Or analytically solving for force */
+   else
+-  {
+-    for (i=0; i<(universe->atom_nb); ++i)
+     {
+-      if (atom_update_frc_analytical(universe, i) == NULL)
+-      {
+-        return (retstr(NULL, TEXT_UNIVERSE_ITERATE_FAILURE, __FILE__, __LINE__));
+-      }
++#pragma omp parallel for
++      for (i=0; i<(universe->atom_nb); ++i)
++        {
++          if (atom_update_frc_analytical(universe, i) == NULL)
++            {
++#pragma omp atomic write
++              err = 1;
++            }
++        }
++      if( 0 != err )
++        {
++          return (retstr(NULL, TEXT_UNIVERSE_ITERATE_FAILURE, __FILE__, __LINE__));
++        }
+     }
+-  }
+-
++  
+   /* Update the acceleration vectors */
++#pragma omp parallel for
+   for (i=0; i<(universe->atom_nb); ++i)
+   {
+     if (atom_update_acc(universe, i) == NULL)
+     {
+-      return (retstr(NULL, TEXT_UNIVERSE_ITERATE_FAILURE, __FILE__, __LINE__));
++#pragma omp atomic write
++        err = 1;
+     }
+   }
+-
++  if( 0 != err )
++    {
++      return (retstr(NULL, TEXT_UNIVERSE_ITERATE_FAILURE, __FILE__, __LINE__));
++    }
+   /* Update the speed vectors */
++#pragma omp parallel for
+   for (i=0; i<(universe->atom_nb); ++i)
+   {
+     if (atom_update_vel(universe, args, i) == NULL)
+     {
+-      return (retstr(NULL, TEXT_UNIVERSE_ITERATE_FAILURE, __FILE__, __LINE__));
++#pragma omp atomic write
++        err = 1;
+     }
+   }
+-
++  if( 0 != err )
++    {
++      return (retstr(NULL, TEXT_UNIVERSE_ITERATE_FAILURE, __FILE__, __LINE__));
++    }
+   return (universe);
+ }
+ 
